@@ -5,10 +5,10 @@ robot control, bounded Cartesian IK, and experiment logging. The MCP transport
 is implemented in TypeScript at `src/apps/mcp-node`; hardware calls are
 forwarded through the shared Node backend to the Python bridge.
 
-Every hardware/camera/robot tool accepts an optional `experiment_id`. When it
-is present, the backend appends `tool_call` and `tool_response` events to that
-experiment. Image responses are also copied into `data/blobs` and referenced
-from `experiment_artifacts`.
+Every backend tool accepts an optional `experiment_id` where it makes sense.
+When it is present, the backend appends `tool_call` and `tool_response` events
+to that experiment. Image and audio responses are also copied into `data/blobs`
+and referenced from `experiment_artifacts`.
 
 ## Experiments
 
@@ -84,7 +84,7 @@ camera 0: 1280x720 at 30 fps
 ### `view_camera`
 
 Captures one frame and returns MCP content with text metadata plus an `image`
-block.
+block. With `experiment_id`, the image is also stored as an artifact.
 
 ```json
 {
@@ -347,7 +347,8 @@ macOS fallback:
 
 Transcribes human speech. Electron sends microphone recordings as
 `audio_base64`; MCP clients can pass a local audio file path that is visible to
-the backend process.
+the backend process. The returned `text` can be sent as the next user message
+in an Electron-hosted agent session.
 
 Requires `OPENAI_API_KEY`.
 

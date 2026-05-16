@@ -286,7 +286,7 @@ npm run build
 node src/apps/mcp-node/dist/server.js
 ```
 
-Run the Electron console:
+Run Chem-0 Lab Console:
 
 ```sh
 npm install
@@ -361,6 +361,8 @@ Working and tested:
 - local SQLite experiment/session/event persistence
 - local blob artifact persistence for camera/tool images
 - Electron app with experiment selection and GPT-5.5 streaming session UI
+- optional `speak_to_human` and `listen_to_human` voice tools
+- Electron microphone recording routed through the shared backend STT tool
 - TypeScript MCP server that logs tool calls/responses when `experiment_id` is provided
 
 Known limitation:
@@ -368,6 +370,8 @@ Known limitation:
 - The Feetech bus can intermittently drop a status packet immediately after
   motion. The server retries observations, but operators should still keep
   motions small and visually monitored.
+- ElevenLabs TTS, OpenAI transcription, and GPT-5.5 sessions require their
+  respective API keys in the process environment.
 
 ## Repository
 

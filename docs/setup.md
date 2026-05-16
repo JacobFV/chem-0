@@ -63,7 +63,7 @@ Run the MCP server:
 node src/apps/mcp-node/dist/server.js
 ```
 
-## Electron Console
+## Chem-0 Lab Console
 
 Install Node dependencies and run the desktop console:
 

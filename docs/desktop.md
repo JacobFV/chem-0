@@ -42,6 +42,17 @@ The backend uses the repo-local Python virtual environment:
 .venv/bin/python
 ```
 
+Voice features use the process environment inherited by Electron:
+
+```sh
+export OPENAI_API_KEY=...
+export ELEVENLABS_API_KEY=...
+npm run electron:dev
+```
+
+The Record/Stop controls use the browser microphone API in the renderer, then
+send the captured audio to the shared backend `listen_to_human` tool.
+
 ## Current Views
 
 The console includes:

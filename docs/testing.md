@@ -57,6 +57,8 @@ list_agent_session_events
 list_experiment_artifacts
 ```
 
+Current expected tool count: `22`.
+
 Expected resource:
 
 ```text
@@ -69,6 +71,24 @@ Experiment logging smoke path:
 2. Call `ask_export` or `speak_to_human` with the returned `experiment_id`.
 3. Call `list_agent_session_events`.
 4. Expected event types include `message`, `tool_call`, and `tool_response`.
+
+Voice smoke path without external credentials:
+
+```json
+{
+  "name": "speak_to_human",
+  "arguments": {
+    "text": "Smoke test only",
+    "provider": "elevenlabs",
+    "play": false,
+    "experiment_id": "exp_..."
+  }
+}
+```
+
+With no `ELEVENLABS_API_KEY`, the expected response has `configured: false` and
+still logs the tool call/response. On macOS, use `provider: "system"` for a real
+local playback smoke test without ElevenLabs.
 
 ## Camera Test
 

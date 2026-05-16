@@ -233,7 +233,7 @@ async function initScene() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
-  camera.position.set(0.9, -1.0, 0.72);
+  camera.position.set(1.8, -2.0, 1.44);
   camera.lookAt(0, 0, 0.16);
   renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(window.devicePixelRatio || 1);

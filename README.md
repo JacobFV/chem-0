@@ -36,6 +36,8 @@ make robot control more inspectable:
 - Cartesian motion uses a repo-local SO-101 URDF plus LeRobot/`placo` FK.
 - Every agent can read the same pose table before moving.
 - Camera frames are available through the same MCP channel as motion commands.
+- The desktop console displays live camera views beside live 3D SO-101 mesh
+  views for detected connected arms.
 - Experiments are persisted to local SQLite, with camera frames stored as local
   blob artifacts beside the database.
 - The agent can talk to nearby humans through OpenAI TTS/STT, with optional

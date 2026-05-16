@@ -97,6 +97,10 @@ Use camera frames before and after meaningful motion. The LLM should treat the
 pose table as calibration context, not as a guarantee that the physical world is
 clear of obstacles.
 
+In the Electron console, camera panels are paired with live 3D SO-101 mesh
+views for detected connected robot buses. Treat those 3D views as servo-state
+visualization, not collision detection.
+
 ## Current Known Pose
 
 The latest tested pose was approximately:

@@ -90,6 +90,7 @@
                 <div class="camera-label">cam 2</div>
               </div>
             </div>
+            <div id="robot-views" class="robot-views"></div>
           </section>
 
           <section class="panel chat-panel">
@@ -112,5 +113,13 @@
     </main>
     <script>var exports = {};</script>
     <script src="./renderer.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js"
+        }
+      }
+    </script>
+    <script type="module" src="./main3d.mjs"></script>
   </body>
 </html>

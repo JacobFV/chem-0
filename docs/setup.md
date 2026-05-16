@@ -114,7 +114,9 @@ npm run electron:dev
 The Electron app lives in `src/apps/electron`. Its main process hosts the same
 `@chem0/backend` package used by the MCP server. The backend owns
 `data/chem0.sqlite`, `data/blobs`, the Python bridge, and GPT-5.5 streaming
-agent sessions.
+agent sessions. The main window shows local camera streams and, for each
+detected connected SO-101 bus, a live 3D mesh view driven by raw servo
+positions.
 
 ## Codex MCP Mount
 

@@ -13,6 +13,7 @@ for (const file of ["index.html", "calibration.html", "styles.css"]) {
   copyFileSync(join(root, "src", "renderer", file), join(out, file));
 }
 copyFileSync(join(root, "src", "renderer", "calibration3d.mjs"), join(out, "calibration3d.mjs"));
+copyFileSync(join(root, "src", "renderer", "main3d.mjs"), join(out, "main3d.mjs"));
 
 const vendorOut = join(out, "vendor");
 mkdirSync(vendorOut, { recursive: true });

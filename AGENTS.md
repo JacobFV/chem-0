@@ -53,6 +53,10 @@ the actual upstream SO-101 visual URDF/STL mesh model with a live raw-position
 overlay plus an endpoint guide pose. Use the GUI when the human operator should
 be guided step-by-step rather than reading terminal prompts.
 
+The main Electron window also renders live 3D SO-101 mesh panels beside the
+camera panels, one per detected connected robot bus. These panels visualize
+raw servo state; they are not collision or workspace guarantees.
+
 ## Run Server
 
 ```sh

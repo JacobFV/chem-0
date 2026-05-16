@@ -5,8 +5,9 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = resolve(root, "../../..");
 const out = join(root, "dist", "renderer");
-rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
+rmSync(join(out, "calibration.js"), { force: true });
+rmSync(join(out, "calibration.js.map"), { force: true });
 
 for (const file of ["index.html", "calibration.html", "styles.css"]) {
   copyFileSync(join(root, "src", "renderer", file), join(out, file));

@@ -11,7 +11,6 @@
       <header class="topbar">
         <div>
           <h1>chem-0</h1>
-          <p>Local experiment console with shared Node backend, LeRobot tools, SQLite sessions, and artifact capture.</p>
         </div>
         <div class="actions">
           <button id="list-tools">Tools</button>
@@ -35,8 +34,10 @@
       <section class="grid">
         <section class="left-column">
           <section class="panel ph-panel">
-            <h2>pH (real-time)</h2>
-            <div id="ph-graph" class="ph-graph"></div>
+            <h2>Real Time pH</h2>
+            <div class="ph-graph">
+              <canvas id="ph-canvas"></canvas>
+            </div>
           </section>
           <section class="panel small-panel">
             <h2>Backend Output</h2>
@@ -74,6 +75,7 @@
         </section>
       </section>
     </main>
+    <script>var exports = {};</script>
     <script src="./renderer.js"></script>
   </body>
 </html>

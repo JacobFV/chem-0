@@ -26,6 +26,7 @@ const activeExperiment = document.querySelector<HTMLDivElement>("#active-experim
 const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
 const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
 const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
+const phCanvas = document.querySelector<HTMLCanvasElement>("#ph-canvas");
 const camFrames: (HTMLImageElement | null)[] = [
   document.querySelector<HTMLImageElement>("#cam-0"),
   document.querySelector<HTMLImageElement>("#cam-1"),
@@ -35,6 +36,9 @@ const camFrames: (HTMLImageElement | null)[] = [
 let experimentId = "";
 let sessionId = "";
 let assistantBubble: HTMLDivElement | null = null;
+
+type PhSample = { value: number; timestamp: number };
+const phSamples: PhSample[] = [];
 
 function show(value: unknown): void {
   output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -65,17 +69,129 @@ function appendChat(role: string, text: string): HTMLDivElement {
   return body;
 }
 
+function imagesFromContent(content: unknown): Array<{ data: string; mimeType: string }> {
+  if (!Array.isArray(content)) return [];
+  const images: Array<{ data: string; mimeType: string }> = [];
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const c = item as JsonObject;
+    if (c.type === "image" && typeof c.data === "string" && typeof c.mimeType === "string") {
+      images.push({ data: c.data, mimeType: c.mimeType });
+    }
+  }
+  return images;
+}
+
+function appendToolBubble(name: string, result: JsonObject | undefined): void {
+  const body = appendChat("tool", `${name} response`);
+  if (!result) return;
+  for (const img of imagesFromContent(result.content)) {
+    const el = document.createElement("img");
+    el.src = `data:${img.mimeType};base64,${img.data}`;
+    el.className = "tool-image";
+    body.parentElement?.appendChild(el);
+  }
+}
+
+function drawPhChart(): void {
+  if (!phCanvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = phCanvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+  phCanvas.width = Math.floor(rect.width * dpr);
+  phCanvas.height = Math.floor(rect.height * dpr);
+  const ctx = phCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.scale(dpr, dpr);
+
+  const w = rect.width;
+  const h = rect.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const padLeft = 32;
+  const padBottom = 18;
+  const padTop = 10;
+  const padRight = 12;
+  const innerW = Math.max(1, w - padLeft - padRight);
+  const innerH = Math.max(1, h - padTop - padBottom);
+
+  ctx.font = "11px Inter, sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "right";
+
+  for (const ph of [0, 7, 14]) {
+    const y = padTop + innerH - (ph / 14) * innerH;
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padLeft, y);
+    ctx.lineTo(padLeft + innerW, y);
+    ctx.stroke();
+    ctx.fillStyle = "#666";
+    ctx.fillText(String(ph), padLeft - 6, y);
+  }
+
+  ctx.strokeStyle = "#1f1f1f";
+  ctx.beginPath();
+  ctx.moveTo(padLeft, padTop);
+  ctx.lineTo(padLeft, padTop + innerH);
+  ctx.lineTo(padLeft + innerW, padTop + innerH);
+  ctx.stroke();
+
+  if (phSamples.length === 0) {
+    ctx.fillStyle = "#444";
+    ctx.textAlign = "center";
+    ctx.fillText("waiting for record_ph samples…", padLeft + innerW / 2, padTop + innerH / 2);
+    return;
+  }
+
+  const tMin = phSamples[0].timestamp;
+  const tMax = phSamples[phSamples.length - 1].timestamp;
+  const tSpan = Math.max(1, tMax - tMin);
+
+  const xFor = (t: number) =>
+    phSamples.length === 1 ? padLeft + innerW / 2 : padLeft + ((t - tMin) / tSpan) * innerW;
+  const yFor = (v: number) => padTop + innerH - (Math.max(0, Math.min(14, v)) / 14) * innerH;
+
+  ctx.strokeStyle = "#7ad9c8";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  phSamples.forEach((sample, i) => {
+    const x = xFor(sample.timestamp);
+    const y = yFor(sample.value);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = "#7ad9c8";
+  for (const sample of phSamples) {
+    const x = xFor(sample.timestamp);
+    const y = yFor(sample.value);
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function renderEvents(events: JsonObject[]): void {
   chatLog.replaceChildren();
+  phSamples.length = 0;
   for (const event of events) {
     const type = String(event.type ?? "");
     const role = String(event.role ?? "system");
     const content = (event.content ?? {}) as JsonObject;
     if (type === "message" && role !== "system") appendChat(role, String(content.text ?? ""));
     if (type === "tool_call") appendChat("tool", `${String(event.name ?? "tool")} ${JSON.stringify(content)}`);
-    if (type === "tool_response") appendChat("tool", `${String(event.name ?? "tool")} response`);
+    if (type === "tool_response") appendToolBubble(String(event.name ?? "tool"), content);
     if (type === "error") appendChat("error", String(content.message ?? content.text ?? ""));
+    if (type === "ph_sample") {
+      const v = Number(content.value);
+      const t = Number(content.timestamp);
+      if (Number.isFinite(v) && Number.isFinite(t)) phSamples.push({ value: v, timestamp: t });
+    }
   }
+  drawPhChart();
 }
 
 async function refreshExperiments(): Promise<void> {
@@ -93,7 +209,11 @@ async function refreshExperiments(): Promise<void> {
 }
 
 async function loadEvents(): Promise<void> {
-  if (!experimentId) return;
+  if (!experimentId) {
+    phSamples.length = 0;
+    drawPhChart();
+    return;
+  }
   const result = await window.chem0.listEvents(experimentId);
   renderEvents((result.events ?? []) as JsonObject[]);
   show(result);
@@ -132,10 +252,17 @@ async function boot(): Promise<void> {
 }
 
 document.querySelector("#create-experiment")?.addEventListener("click", async () => {
-  const result = await window.chem0.createExperiment(experimentName.value.trim() || "Untitled experiment", { app: "electron" });
-  setActive(result.experiment as JsonObject, result.session as JsonObject);
-  await refreshExperiments();
-  await loadEvents();
+  try {
+    const result = await window.chem0.createExperiment(experimentName.value.trim() || "Untitled experiment", { app: "electron" });
+    show(result);
+    setActive(result.experiment as JsonObject, result.session as JsonObject);
+    await refreshExperiments();
+    await loadEvents();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    show({ create_experiment_error: message });
+    appendChat("error", `create_experiment failed: ${message}`);
+  }
 });
 
 experimentSelect.addEventListener("change", async () => {
@@ -156,7 +283,7 @@ sendMessage.addEventListener("click", async () => {
   const payload: JsonObject = {
     experiment_id: experimentId,
     message,
-    model: "gpt-5.5"
+    model: "gpt-4o"
   };
   if (sessionId) payload.session_id = sessionId;
   await window.chem0.sendAgentMessage(payload);
@@ -171,8 +298,26 @@ window.chem0.onAgentEvent((event) => {
     assistantBubble.textContent += String(event.text ?? "");
     chatLog.scrollTop = chatLog.scrollHeight;
   }
-  if (event.type === "tool_response") appendChat("tool", `${String(event.name ?? "tool")} response`);
+  if (event.type === "tool_response") {
+    appendToolBubble(String(event.name ?? "tool"), event.result as JsonObject | undefined);
+    assistantBubble = null;
+  }
+  if (event.type === "ph_sample") {
+    const v = Number(event.value);
+    const t = Number(event.timestamp);
+    if (Number.isFinite(v) && Number.isFinite(t)) {
+      phSamples.push({ value: v, timestamp: t });
+      drawPhChart();
+    }
+  }
   if (event.type === "error") appendChat("error", String(event.message ?? ""));
 });
+
+setInterval(() => {
+  if (document.visibilityState !== "visible") return;
+  void Promise.all([refreshCamera(0), refreshCamera(1), refreshCamera(2)]);
+}, 3000);
+
+window.addEventListener("resize", () => drawPhChart());
 
 void boot();

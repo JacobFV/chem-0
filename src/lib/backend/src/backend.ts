@@ -5,7 +5,7 @@ import { PythonBridge } from "./pythonBridge";
 import { Chem0Store } from "./store";
 import type { Experiment, JsonObject } from "./types";
 
-const DEFAULT_MODEL = "gpt-5.5";
+const DEFAULT_MODEL = "gpt-4o";
 const MAX_AGENT_STEPS = 8;
 
 export class Chem0Backend extends EventEmitter {
@@ -52,6 +52,28 @@ export class Chem0Backend extends EventEmitter {
     }
     if (name === "list_experiment_artifacts") {
       return { artifacts: this.store.listArtifacts(String(args.experiment_id)) };
+    }
+    if (name === "record_ph") {
+      const value = Number(args.value);
+      const note = typeof args.note === "string" ? args.note : "";
+      const experimentIdArg = typeof args.experiment_id === "string" ? args.experiment_id : "";
+      if (!experimentIdArg) return { ok: false, error: "experiment_id required" };
+      if (!Number.isFinite(value)) return { ok: false, error: "value must be numeric" };
+      const timestamp = Date.now();
+      this.store.appendEvent({
+        experimentId: experimentIdArg,
+        type: "ph_sample",
+        role: "system",
+        content: { value, note, timestamp }
+      });
+      this.emit("agent-event", {
+        type: "ph_sample",
+        experiment_id: experimentIdArg,
+        value,
+        note,
+        timestamp
+      });
+      return { ok: true, value, timestamp };
     }
 
     const experimentId = typeof args.experiment_id === "string" ? args.experiment_id : undefined;
@@ -108,7 +130,7 @@ export class Chem0Backend extends EventEmitter {
     try {
       let text = "";
       const instructions =
-        "You are controlling a local LeRobot experiment through chem-0. Use tools when hardware state, camera state, or arm motion is required. Keep motions conservative and prefer known pose-table references.";
+        "You are controlling a local LeRobot experiment through chem-0. Use tools when hardware state, camera state, or arm motion is required. Keep motions conservative and prefer known pose-table references. When you observe a universal-indicator color in a camera frame, estimate the pH and call record_ph(value) so the operator's real-time chart updates.";
       let nextInput: unknown = this.sessionMessages(input.experimentId, sessionId);
       let previousResponseId: string | undefined;
       const tools = await this.openAiTools();
@@ -295,6 +317,19 @@ export class Chem0Backend extends EventEmitter {
           type: "object",
           properties: { experiment_id: { type: "string" } },
           required: ["experiment_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "record_ph",
+        description: "Record a pH reading (typically 0-14) for the current experiment after observing the universal indicator color from a camera frame. Updates the operator's real-time pH chart.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            value: { type: "number" },
+            note: { type: "string" }
+          },
+          required: ["value"],
           additionalProperties: false
         }
       }

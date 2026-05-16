@@ -1,6 +1,6 @@
 # chem-0
 
-![chem-0 robot arm welcome image](assets/welcome-image.svg)
+![chem-0 robot arm welcome image](assets/robot_lab_scene.png)
 
 ## A small research project in embodied laboratory automation
 

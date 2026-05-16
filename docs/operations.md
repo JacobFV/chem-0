@@ -39,6 +39,18 @@ needed. Keep max_step <= 5 and stay inside calibrated limits.
 Use deterministic endpoint calibration when an arm is new, rebuilt, or attached
 to a different servo set. Give each physical arm its own `robot_id`.
 
+GUI flow:
+
+```sh
+npm run electron:dev
+```
+
+Click **Calibrate** in the top-right toolbar. The calibration window displays
+the SO-101 axes, highlights the active endpoint, and records each raw servo
+position as you step through the prompts.
+
+Terminal flow:
+
 ```sh
 npm run calibrate:so101 -- \
   --port /dev/tty.usbmodem5A460833421 \

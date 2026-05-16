@@ -47,6 +47,10 @@ The deterministic calibration prompts for `Z1`, `X1`, `X2`, `X3`, `Z2`, and
 `Hand` endpoints, then writes the LeRobot calibration JSON and servo register
 limits for that robot id.
 
+The Electron app also has a top-right **Calibrate** button that opens the same
+deterministic workflow as a visual GUI. Use the GUI when the human operator
+should be guided step-by-step rather than reading terminal prompts.
+
 ## Run Server
 
 ```sh

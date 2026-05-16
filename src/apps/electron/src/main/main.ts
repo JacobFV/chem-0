@@ -73,6 +73,24 @@ function createWindow(): void {
   void win.loadFile(path.join(__dirname, "../renderer/index.html"));
 }
 
+function createCalibrationWindow(): void {
+  const win = new BrowserWindow({
+    width: 1040,
+    height: 760,
+    minWidth: 900,
+    minHeight: 640,
+    title: `${APP_NAME} Calibration`,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  windows.add(win);
+  win.on("closed", () => windows.delete(win));
+  void win.loadFile(path.join(__dirname, "../renderer/calibration.html"));
+}
+
 app.whenReady().then(async () => {
   installApplicationMenu();
   app.setAboutPanelOptions({
@@ -115,4 +133,8 @@ ipcMain.handle("chem0:agent-message", async (_event, input: JsonObject) => {
     model: typeof input.model === "string" ? input.model : undefined
   });
   return { accepted: true };
+});
+ipcMain.handle("chem0:open-calibration-window", async () => {
+  createCalibrationWindow();
+  return { opened: true };
 });

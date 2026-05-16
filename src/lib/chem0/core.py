@@ -33,6 +33,57 @@ JOINTS = [
 ]
 ARM_JOINTS = JOINTS[:-1]
 
+CALIBRATION_STEPS = [
+    {
+        "axis": "Z1",
+        "joint": "shoulder_pan",
+        "id": 1,
+        "label": "base Z roll",
+        "first": "all the way to the left",
+        "second": "all the way to the right",
+    },
+    {
+        "axis": "X1",
+        "joint": "shoulder_lift",
+        "id": 2,
+        "label": "base X pitch",
+        "first": "all the way backward",
+        "second": "all the way forward",
+    },
+    {
+        "axis": "X2",
+        "joint": "elbow_flex",
+        "id": 3,
+        "label": "elbow X pitch",
+        "first": "fully bent/backward",
+        "second": "fully extended/forward",
+    },
+    {
+        "axis": "X3",
+        "joint": "wrist_flex",
+        "id": 4,
+        "label": "wrist X pitch",
+        "first": "all the way down/backward",
+        "second": "all the way up/forward",
+    },
+    {
+        "axis": "Z2",
+        "joint": "wrist_roll",
+        "id": 5,
+        "label": "wrist Z roll",
+        "first": "all the way counterclockwise/left",
+        "second": "all the way clockwise/right",
+    },
+    {
+        "axis": "Hand",
+        "joint": "gripper",
+        "id": 6,
+        "label": "gripper",
+        "first": "fully closed",
+        "second": "fully open",
+    },
+]
+
 # Normalized limits derived from the saved calibration for mcp_so101. The first
 # five joints are degrees; gripper is 0..100.
 JOINT_LIMITS = {
@@ -606,6 +657,50 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "prepare_so101_calibration",
+        "description": "Prepare an SO-101 arm for deterministic GUI calibration by disabling torque and resetting homing/limits.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "port": {"type": "string"},
+                "baud": {"type": "integer", "default": 1000000},
+            },
+            "required": ["port"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "read_so101_calibration_endpoint",
+        "description": "Read one raw SO-101 servo position for deterministic calibration.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "port": {"type": "string"},
+                "joint": {"type": "string", "enum": JOINTS},
+                "samples": {"type": "integer", "minimum": 1, "maximum": 25, "default": 5},
+                "baud": {"type": "integer", "default": 1000000},
+            },
+            "required": ["port", "joint"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "finalize_so101_calibration",
+        "description": "Compute and save a deterministic SO-101 calibration file, optionally writing it to servo registers.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "port": {"type": "string"},
+                "robot_id": {"type": "string"},
+                "records": {"type": "object", "additionalProperties": True},
+                "write_motors": {"type": "boolean", "default": True},
+                "baud": {"type": "integer", "default": 1000000},
+            },
+            "required": ["port", "robot_id", "records"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "connect_so101",
         "description": "Connect to an SO-101/SO-100 follower arm on a Feetech bus.",
         "inputSchema": {
@@ -893,6 +988,155 @@ def probe_feetech(args: dict[str, Any]) -> dict[str, Any]:
             bus.disconnect(disable_torque=False)
 
 
+def calibration_bus(port: str) -> Any:
+    from lerobot.motors import Motor, MotorNormMode
+    from lerobot.motors.feetech import FeetechMotorsBus
+
+    motors = {
+        "shoulder_pan": Motor(1, "sts3215", MotorNormMode.DEGREES),
+        "shoulder_lift": Motor(2, "sts3215", MotorNormMode.DEGREES),
+        "elbow_flex": Motor(3, "sts3215", MotorNormMode.DEGREES),
+        "wrist_flex": Motor(4, "sts3215", MotorNormMode.DEGREES),
+        "wrist_roll": Motor(5, "sts3215", MotorNormMode.DEGREES),
+        "gripper": Motor(6, "sts3215", MotorNormMode.RANGE_0_100),
+    }
+    return FeetechMotorsBus(port=port, motors=motors)
+
+
+def calibration_path(robot_id: str) -> Path:
+    if not robot_id.strip():
+        raise ValueError("robot_id is required.")
+    return Path.home() / ".cache/huggingface/lerobot/calibration/robots/so_follower" / f"{robot_id}.json"
+
+
+def read_stable_raw_position(bus: Any, joint: str, samples: int = 5) -> int:
+    from statistics import median
+
+    values = []
+    for _ in range(max(1, min(25, int(samples)))):
+        values.append(int(bus.read("Present_Position", joint, normalize=False, num_retry=3)))
+        time.sleep(0.04)
+    return int(median(values))
+
+
+def compute_calibration(records: dict[str, Any]) -> dict[str, Any]:
+    calibration: dict[str, Any] = {}
+    for spec in CALIBRATION_STEPS:
+        joint = spec["joint"]
+        if joint not in records or not isinstance(records[joint], dict):
+            raise ValueError(f"Missing calibration records for {joint}.")
+        entry = records[joint]
+        raw_a = int(entry["first"])
+        raw_b = int(entry["second"])
+        raw_min = min(raw_a, raw_b)
+        raw_max = max(raw_a, raw_b)
+        if raw_max - raw_min < 8:
+            raise ValueError(f"{joint} endpoints are too close together: {raw_a}, {raw_b}")
+
+        midpoint = round((raw_min + raw_max) / 2)
+        homing_offset = midpoint - 2047
+        range_min = raw_min - homing_offset
+        range_max = raw_max - homing_offset
+        if not (0 <= range_min < range_max <= 4095):
+            raise ValueError(
+                f"{joint} homed range [{range_min}, {range_max}] is outside 0..4095. "
+                f"Raw endpoints were {raw_a}, {raw_b}."
+            )
+        calibration[joint] = {
+            "id": int(spec["id"]),
+            "drive_mode": 0,
+            "homing_offset": int(homing_offset),
+            "range_min": int(range_min),
+            "range_max": int(range_max),
+        }
+    return calibration
+
+
+def prepare_so101_calibration(args: dict[str, Any]) -> dict[str, Any]:
+    from lerobot.motors.feetech import OperatingMode
+
+    port = args["port"]
+    baud = int(args.get("baud", 1000000))
+    bus = calibration_bus(port)
+    try:
+        bus.connect(handshake=True)
+        bus.set_baudrate(baud)
+        bus.disable_torque(num_retry=3)
+        for joint in JOINTS:
+            bus.write("Operating_Mode", joint, OperatingMode.POSITION.value, normalize=False, num_retry=3)
+        bus.reset_calibration()
+        bus.disable_torque(num_retry=3)
+        positions = bus.sync_read("Present_Position", normalize=False, num_retry=3)
+        return _tool_json({"port": port, "baud": baud, "steps": CALIBRATION_STEPS, "positions": positions})
+    finally:
+        if bus.is_connected:
+            bus.disconnect(disable_torque=False)
+
+
+def read_so101_calibration_endpoint(args: dict[str, Any]) -> dict[str, Any]:
+    port = args["port"]
+    joint = args["joint"]
+    if joint not in JOINTS:
+        return _tool_error(f"Unknown joint: {joint}")
+    bus = calibration_bus(port)
+    try:
+        bus.connect(handshake=True)
+        bus.set_baudrate(int(args.get("baud", 1000000)))
+        bus.disable_torque(num_retry=3)
+        position = read_stable_raw_position(bus, joint, int(args.get("samples", 5)))
+        return _tool_json({"port": port, "joint": joint, "raw_position": position})
+    finally:
+        if bus.is_connected:
+            bus.disconnect(disable_torque=False)
+
+
+def finalize_so101_calibration(args: dict[str, Any]) -> dict[str, Any]:
+    from lerobot.motors import MotorCalibration
+
+    port = args["port"]
+    robot_id = str(args["robot_id"])
+    records = args.get("records")
+    if not isinstance(records, dict):
+        return _tool_error("records must be an object keyed by joint.")
+    calibration = compute_calibration(records)
+    path = calibration_path(robot_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        backup = path.with_suffix(path.suffix + f".bak-{time.strftime('%Y%m%d-%H%M%S')}")
+        backup.write_text(path.read_text())
+    else:
+        backup = None
+    path.write_text(json.dumps(calibration, indent=4) + "\n")
+    records_path = path.with_suffix(".records.json")
+    records_path.write_text(json.dumps({"records": records, "calibration": calibration}, indent=2) + "\n")
+
+    wrote_motors = False
+    if bool(args.get("write_motors", True)):
+        bus = calibration_bus(port)
+        try:
+            bus.connect(handshake=True)
+            bus.set_baudrate(int(args.get("baud", 1000000)))
+            motor_calibration = {joint: MotorCalibration(**values) for joint, values in calibration.items()}
+            bus.write_calibration(motor_calibration, cache=True)
+            bus.disable_torque(num_retry=3)
+            wrote_motors = True
+        finally:
+            if bus.is_connected:
+                bus.disconnect(disable_torque=False)
+
+    return _tool_json(
+        {
+            "robot_id": robot_id,
+            "port": port,
+            "calibration_path": str(path),
+            "records_path": str(records_path),
+            "backup_path": str(backup) if backup else None,
+            "wrote_motors": wrote_motors,
+            "calibration": calibration,
+        }
+    )
+
+
 def connect_so101(args: dict[str, Any]) -> dict[str, Any]:
     from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 
@@ -1141,6 +1385,9 @@ HANDLERS = {
     "list_cameras": list_cameras,
     "view_camera": view_camera,
     "probe_feetech": probe_feetech,
+    "prepare_so101_calibration": prepare_so101_calibration,
+    "read_so101_calibration_endpoint": read_so101_calibration_endpoint,
+    "finalize_so101_calibration": finalize_so101_calibration,
     "connect_so101": connect_so101,
     "observe": observe,
     "get_arm_pose": get_arm_pose,

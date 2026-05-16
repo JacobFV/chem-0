@@ -368,3 +368,145 @@ pre {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.calibration-app {
+  min-height: 100vh;
+  background: #000000;
+  display: flex;
+  flex-direction: column;
+}
+
+.calibration-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(360px, 460px);
+  gap: 16px;
+  padding: 16px;
+}
+
+.calibration-visual,
+.calibration-controls {
+  min-height: 0;
+}
+
+.robot-diagram {
+  height: 100%;
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #1a1a1a;
+  border-radius: 6px;
+}
+
+.robot-diagram svg {
+  width: min(100%, 720px);
+  height: auto;
+  display: block;
+}
+
+.joint-link {
+  stroke: #696969;
+  stroke-width: 16;
+  stroke-linecap: round;
+}
+
+.robot-base {
+  fill: #121212;
+  stroke: #555555;
+  stroke-width: 2;
+}
+
+.axis-node {
+  fill: #111111;
+  stroke: #767676;
+  stroke-width: 3;
+}
+
+.axis-hand {
+  stroke: #767676;
+  stroke-width: 12;
+  stroke-linecap: round;
+}
+
+.axis-node.active {
+  fill: #173f39;
+  stroke: #7ad9c8;
+  stroke-width: 5;
+}
+
+.axis-hand.active {
+  stroke: #7ad9c8;
+}
+
+.robot-diagram text {
+  fill: #ededed;
+  font-size: 18px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.calibration-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.step-card {
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  padding: 14px;
+  margin: 8px 0 14px;
+  background: #080808;
+}
+
+.step-count {
+  color: #7ad9c8;
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.step-card h2 {
+  color: #ededed;
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.step-card p {
+  color: #b8b8b8;
+  line-height: 1.45;
+}
+
+.endpoint-table {
+  overflow: auto;
+  border: 1px solid #1a1a1a;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.endpoint-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.endpoint-table th,
+.endpoint-table td {
+  border-bottom: 1px solid #1a1a1a;
+  padding: 8px;
+  text-align: left;
+}
+
+.endpoint-table th {
+  color: #888888;
+  background: #060606;
+}
+
+.endpoint-table tr.active td {
+  background: #10201d;
+}
+
+#calibration-output {
+  height: 180px;
+}

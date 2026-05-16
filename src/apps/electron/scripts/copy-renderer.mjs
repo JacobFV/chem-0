@@ -6,6 +6,6 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const out = join(root, "dist", "renderer");
 mkdirSync(out, { recursive: true });
 
-for (const file of ["index.html", "styles.css"]) {
+for (const file of ["index.html", "calibration.html", "styles.css"]) {
   copyFileSync(join(root, "src", "renderer", file), join(out, file));
 }

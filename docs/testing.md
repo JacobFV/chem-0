@@ -37,6 +37,9 @@ list_serial_ports
 list_cameras
 view_camera
 probe_feetech
+prepare_so101_calibration
+read_so101_calibration_endpoint
+finalize_so101_calibration
 connect_so101
 observe
 get_arm_pose
@@ -60,7 +63,7 @@ get_default_robot
 record_ph
 ```
 
-Current expected tool count: `25`.
+Current expected tool count: `28`.
 
 Robot selection smoke path:
 

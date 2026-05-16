@@ -153,6 +153,47 @@ Read-only servo bus probe. Does not move motors.
 
 Expected working result includes IDs `1..6`, model `777`, baud `1000000`.
 
+### `prepare_so101_calibration`
+
+GUI-friendly deterministic calibration setup. Disables torque, resets homing
+and range registers to factory values, and returns the ordered calibration
+steps.
+
+```json
+{
+  "port": "/dev/tty.usbmodem5A460833421"
+}
+```
+
+### `read_so101_calibration_endpoint`
+
+Reads one stable raw servo position after the human has moved the prompted
+joint to an endpoint.
+
+```json
+{
+  "port": "/dev/tty.usbmodem5A460833421",
+  "joint": "shoulder_pan",
+  "samples": 5
+}
+```
+
+### `finalize_so101_calibration`
+
+Computes and saves a LeRobot-compatible calibration file and optionally writes
+the calibration back to the servo registers.
+
+```json
+{
+  "port": "/dev/tty.usbmodem5A460833421",
+  "robot_id": "mcp_so101_b",
+  "records": {
+    "shoulder_pan": { "first": 900, "second": 3200 }
+  },
+  "write_motors": true
+}
+```
+
 ### `connect_so101`
 
 Connects the calibrated follower arm.

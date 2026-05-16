@@ -46,6 +46,12 @@ npm run calibrate:so101 -- \
   --robot-id mcp_so101_b
 ```
 
+The Electron app also has a guided calibration window. Start the app with
+`npm run electron:dev`, then click **Calibrate** in the top-right toolbar. The
+window displays the SO-101 axes, highlights the current joint, records each
+endpoint with a button press, and writes the same calibration format as the
+terminal script.
+
 The script prompts joint-by-joint in this order:
 
 | Axis | LeRobot joint | Prompted motion |

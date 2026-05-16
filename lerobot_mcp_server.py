@@ -806,6 +806,22 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "ask_export",
+        "description": "Ask a human/domain expert a question. Placeholder implementation currently reports that the expert is unavailable.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Question to ask the expert.",
+                }
+            },
+            "required": ["question"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "move_relative",
         "description": "Move connected robot joints by small relative deltas, then return observed state.",
         "inputSchema": {
@@ -1091,6 +1107,13 @@ def close_gripper(args: dict[str, Any]) -> dict[str, Any]:
     return set_gripper(args, DEFAULT_CLOSE_GRIPPER)
 
 
+def ask_export(args: dict[str, Any]) -> dict[str, Any]:
+    question = str(args.get("question", "")).strip()
+    if not question:
+        return _tool_error("question is required.")
+    return _tool_json({"question": question, "answer": "expert not available"})
+
+
 def move_relative(args: dict[str, Any]) -> dict[str, Any]:
     if not STATE.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
@@ -1149,6 +1172,7 @@ HANDLERS = {
     "set_position": set_position,
     "open_gripper": open_gripper,
     "close_gripper": close_gripper,
+    "ask_export": ask_export,
     "move_relative": move_relative,
     "disconnect": disconnect,
 }

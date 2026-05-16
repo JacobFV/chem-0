@@ -32,6 +32,7 @@ move_pose
 set_position
 open_gripper
 close_gripper
+ask_export
 move_relative
 disconnect
 ```

@@ -63,8 +63,10 @@ Calibration file:
 8. `get_arm_pose`.
 9. Move with `set_arm_pose` for joint-space control or `set_position` for IK.
 10. Use `move_pose` only as the legacy alias for `set_arm_pose`.
-11. Keep `max_step <= 5` unless a human explicitly approves otherwise.
-12. `disconnect`.
+11. Use `ask_export(question)` only as a placeholder for future expert review;
+    it currently returns `expert not available`.
+12. Keep `max_step <= 5` unless a human explicitly approves otherwise.
+13. `disconnect`.
 
 ## Preferred Joint-Space Motion Tool
 

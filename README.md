@@ -61,6 +61,7 @@ flowchart LR
     pose["Pose Table Resource<br/><code>lerobot://pose-table</code>"]
     ik["SO-101 FK / IK<br/><code>placo</code> + URDF"]
     safety["Validation + Step Interpolation<br/>joint limits, workspace, max_step"]
+    expert["Expert Placeholder<br/><code>ask_export(question)</code>"]
     camera["OpenCV Camera<br/>camera_id 0"]
     robot["LeRobot SO-101/SO-100<br/>follower arm"]
     bus["Feetech STS3215 Servo Bus<br/>IDs 1-6 at 1 Mbps"]
@@ -74,6 +75,7 @@ flowchart LR
     server -->|"get_position<br/>set_position"| ik
     ik -->|"IK joint target"| safety
     server -->|"set_arm_pose<br/>move_pose alias"| safety
+    server -->|"ask_export"| expert
     safety -->|"validated joint action"| robot
     calib -->|"joint limits + homing"| server
     robot <-->|"serial commands"| bus
@@ -82,11 +84,13 @@ flowchart LR
     classDef server fill:#f0f8f3,stroke:#92c8a0,color:#1f4d2d
     classDef safety fill:#fff7ec,stroke:#e0ad6e,color:#5d3d16
     classDef ik fill:#eefaf9,stroke:#79bbb4,color:#164d49
+    classDef expert fill:#f7f7f7,stroke:#aaa,color:#333
     classDef hardware fill:#f4f1ff,stroke:#a99be8,color:#2f255f
     class agent agent
     class server,pose,calib server
     class safety safety
     class ik ik
+    class expert expert
     class camera,robot,bus hardware
 ```
 
@@ -107,6 +111,7 @@ The server exposes tools for discovery, vision, robot state, and movement:
 - `set_position`
 - `open_gripper`
 - `close_gripper`
+- `ask_export`
 - `move_relative`
 - `disconnect`
 

@@ -22,7 +22,9 @@ for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 7. `observe`, then `get_arm_pose`.
 8. Move with `set_arm_pose` for joint-space commands or `set_position` for
    Cartesian IK commands. Use `move_pose` only as the legacy alias.
-9. `disconnect` at the end.
+9. Use `ask_export(question)` only as a placeholder for future expert review;
+   it currently returns `expert not available`.
+10. `disconnect` at the end.
 
 ## Motion Guidance
 

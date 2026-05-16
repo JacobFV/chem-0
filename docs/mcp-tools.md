@@ -236,6 +236,23 @@ other joints.
 {}
 ```
 
+## Expert Placeholder
+
+### `ask_export`
+
+Accepts a question for a future human/domain expert bridge. The current
+implementation is intentionally a placeholder and returns:
+
+```text
+expert not available
+```
+
+```json
+{
+  "question": "Is this pose safe for the next lab step?"
+}
+```
+
 ### `move_relative`
 
 Small nudge primitive.

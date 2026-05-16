@@ -439,7 +439,11 @@ pre {
   background: var(--bg-0);
   overflow: hidden;
   position: relative;
+  cursor: grab;
+  touch-action: none;
 }
+
+.robot-view-frame:active { cursor: grabbing; }
 
 .camera-frame::after,
 .robot-view-frame::after {
@@ -596,12 +600,17 @@ pre {
 .calibration-visual,
 .calibration-controls {
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+}
+
+.calibration-visual {
+  display: flex;
+  flex-direction: column;
 }
 
 .robot-diagram {
   flex: 1;
-  min-height: 420px;
+  min-height: 0;
   display: grid;
   place-items: center;
   border: 1px solid var(--border-1);
@@ -609,7 +618,12 @@ pre {
   background:
     radial-gradient(600px 300px at 50% 0%, rgba(110, 231, 200, 0.04), transparent 60%),
     var(--bg-0);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
 }
+
+.robot-diagram:active { cursor: grabbing; }
 
 .robot-diagram svg {
   width: min(100%, 720px);
@@ -617,7 +631,18 @@ pre {
   display: block;
 }
 
-.urdf-viewer { width: 100%; height: 100%; min-height: 420px; }
+.urdf-viewer {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.urdf-viewer canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
 
 .joint-link { stroke: #696969; stroke-width: 16; stroke-linecap: round; }
 

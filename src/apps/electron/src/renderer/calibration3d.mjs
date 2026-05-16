@@ -39,6 +39,15 @@ let renderer;
 let liveRobot;
 let guideRobot;
 let urdfJoints = [];
+const orbit = {
+  target: new THREE.Vector3(0, 0, 0.16),
+  radius: 3.25,
+  theta: -0.84,
+  phi: 1.12,
+  dragging: false,
+  lastX: 0,
+  lastY: 0
+};
 
 function failLoudly(error) {
   const message = error instanceof Error ? error.stack || error.message : String(error);
@@ -233,12 +242,12 @@ async function initScene() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
-  camera.position.set(1.8, -2.0, 1.44);
-  camera.lookAt(0, 0, 0.16);
+  updateOrbitCamera();
   renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(window.devicePixelRatio || 1);
   renderer.shadowMap.enabled = true;
   viewer.replaceChildren(renderer.domElement);
+  installOrbitControls(renderer.domElement, orbit, updateOrbitCamera);
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.6));
   const key = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -252,6 +261,43 @@ async function initScene() {
   window.addEventListener("resize", resizeScene);
   resizeScene();
   animate();
+}
+
+function updateOrbitCamera() {
+  if (!camera) return;
+  const sinPhi = Math.sin(orbit.phi);
+  camera.position.set(
+    orbit.target.x + orbit.radius * sinPhi * Math.cos(orbit.theta),
+    orbit.target.y + orbit.radius * sinPhi * Math.sin(orbit.theta),
+    orbit.target.z + orbit.radius * Math.cos(orbit.phi)
+  );
+  camera.lookAt(orbit.target);
+}
+
+function installOrbitControls(element, state, update) {
+  element.addEventListener("pointerdown", (event) => {
+    state.dragging = true;
+    state.lastX = event.clientX;
+    state.lastY = event.clientY;
+    element.setPointerCapture(event.pointerId);
+  });
+  element.addEventListener("pointermove", (event) => {
+    if (!state.dragging) return;
+    const dx = event.clientX - state.lastX;
+    const dy = event.clientY - state.lastY;
+    state.lastX = event.clientX;
+    state.lastY = event.clientY;
+    state.theta -= dx * 0.008;
+    state.phi = Math.max(0.18, Math.min(Math.PI - 0.18, state.phi + dy * 0.008));
+    update();
+  });
+  element.addEventListener("pointerup", (event) => {
+    state.dragging = false;
+    element.releasePointerCapture(event.pointerId);
+  });
+  element.addEventListener("pointercancel", () => {
+    state.dragging = false;
+  });
 }
 
 function resizeScene() {

@@ -25,7 +25,7 @@ state, experiment state, persistence, or agent streaming independently.
 ```mermaid
 flowchart LR
     agent["MCP Client / LLM Agent<br/>Codex, Claude, Gemini, etc."]
-    desktop["Electron Console<br/><code>src/apps/electron</code>"]
+    desktop["Chem-0 Lab Console<br/><code>src/apps/electron</code>"]
     mcp["Node stdio MCP Server<br/><code>src/apps/mcp-node</code>"]
     backend["Shared Node Backend<br/><code>@chem0/backend</code>"]
     db["SQLite Experiment Store<br/><code>data/chem0.sqlite</code>"]

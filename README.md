@@ -49,7 +49,7 @@ src/lib/backend/          TypeScript Node backend: experiments, SQLite, blobs, G
 src/lib/chem0/            Python hardware core: robot, camera, kinematics, tool handlers
 src/apps/mcp-node/        TypeScript stdio MCP server entrypoint
 src/apps/python-bridge/   Line-delimited JSON bridge from Node to Python core
-src/apps/electron/        TypeScript Electron desktop console
+src/apps/electron/        Chem-0 Lab Console desktop app
 assets/                   Welcome image and SO-101 kinematic URDF
 docs/                     Detailed setup, operations, testing, and references
 AGENTS.md                 Agent handoff and operating instructions
@@ -62,7 +62,7 @@ CLAUDE.md                 Same as AGENTS.md
 ```mermaid
 flowchart LR
     agent["MCP Client / LLM Agent<br/>Codex, Claude, Gemini, etc."]
-    desktop["Electron Console<br/><code>src/apps/electron</code>"]
+    desktop["Chem-0 Lab Console<br/><code>src/apps/electron</code>"]
     mcp["Node stdio MCP Server<br/><code>src/apps/mcp-node</code>"]
     backend["Shared Node Backend<br/><code>@chem0/backend</code>"]
     db["SQLite Experiment Store<br/><code>data/chem0.sqlite</code>"]

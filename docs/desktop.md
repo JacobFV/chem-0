@@ -1,6 +1,6 @@
-# Desktop App
+# Chem-0 Lab Console
 
-The desktop app is a TypeScript Electron console in:
+Chem-0 Lab Console is the TypeScript Electron desktop app in:
 
 ```text
 src/apps/electron

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, session } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { Chem0Backend, type JsonObject } from "@chem0/backend";
 
@@ -114,6 +115,10 @@ app.on("window-all-closed", () => {
 
 ipcMain.handle("chem0:tools-list", async () => backend.listTools());
 ipcMain.handle("chem0:resource-read", async (_event, uri: string) => backend.readResource(uri));
+ipcMain.handle("chem0:urdf-read", async () => ({
+  path: path.join(repoRoot, "assets/kinematics/so101_kinematics.urdf"),
+  text: fs.readFileSync(path.join(repoRoot, "assets/kinematics/so101_kinematics.urdf"), "utf8")
+}));
 ipcMain.handle("chem0:tool-call", async (_event, name: string, args: JsonObject) => backend.callTool(name, args));
 ipcMain.handle("chem0:create-experiment", async (_event, name: string, metadata: JsonObject = {}) =>
   backend.createExperiment(name, metadata)

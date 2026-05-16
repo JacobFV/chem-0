@@ -657,6 +657,17 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "list_connected_robots",
+        "description": "List likely connected LeRobot/Feetech servo buses with detected servo IDs.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "max_id": {"type": "integer", "minimum": 1, "maximum": 253, "default": 12},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "prepare_so101_calibration",
         "description": "Prepare an SO-101 arm for deterministic GUI calibration by disabling torque and resetting homing/limits.",
         "inputSchema": {
@@ -681,6 +692,19 @@ TOOLS: list[dict[str, Any]] = [
                 "baud": {"type": "integer", "default": 1000000},
             },
             "required": ["port", "joint"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "read_so101_raw_positions",
+        "description": "Read all raw SO-101 servo positions without applying calibration.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "port": {"type": "string"},
+                "baud": {"type": "integer", "default": 1000000},
+            },
+            "required": ["port"],
             "additionalProperties": False,
         },
     },
@@ -988,6 +1012,54 @@ def probe_feetech(args: dict[str, Any]) -> dict[str, Any]:
             bus.disconnect(disable_torque=False)
 
 
+def list_connected_robots(args: dict[str, Any]) -> dict[str, Any]:
+    from lerobot.motors import Motor, MotorNormMode
+    from lerobot.motors.feetech import FeetechMotorsBus
+
+    max_id = int(args.get("max_id", 12))
+    ports = sorted(set(glob.glob("/dev/tty.usb*") + glob.glob("/dev/tty.wch*") + glob.glob("/dev/cu.usb*") + glob.glob("/dev/cu.wch*")))
+    robots = []
+    seen_devices: set[str] = set()
+    for port in ports:
+        canonical = port.replace("/dev/cu.", "/dev/tty.")
+        if canonical in seen_devices:
+            continue
+        seen_devices.add(canonical)
+        motors = {f"id{i}": Motor(i, "sts3215", MotorNormMode.DEGREES) for i in range(1, max_id + 1)}
+        bus = FeetechMotorsBus(port=canonical, motors=motors)
+        hits = []
+        try:
+            bus.connect(handshake=False)
+            bus.set_baudrate(1000000)
+            for servo_id in range(1, max_id + 1):
+                model = bus.ping(servo_id, num_retry=1, raise_on_error=False)
+                if model is not None:
+                    hit: dict[str, Any] = {"id": servo_id, "model": int(model)}
+                    try:
+                        hit["voltage"] = bus.read("Present_Voltage", f"id{servo_id}", normalize=False, num_retry=1)
+                    except Exception:
+                        pass
+                    hits.append(hit)
+        except Exception as exc:
+            robots.append({"port": canonical, "hits": hits, "error": str(exc)})
+            continue
+        finally:
+            if bus.is_connected:
+                bus.disconnect(disable_torque=False)
+        if hits:
+            ids = [hit["id"] for hit in hits]
+            robots.append(
+                {
+                    "port": canonical,
+                    "hits": hits,
+                    "servo_ids": ids,
+                    "looks_like_so101": ids[:6] == [1, 2, 3, 4, 5, 6],
+                    "suggested_robot_id": "mcp_so101_b" if "5A460833421" in canonical else DEFAULT_ROBOT_ID,
+                }
+            )
+    return _tool_json({"robots": robots})
+
+
 def calibration_bus(port: str) -> Any:
     from lerobot.motors import Motor, MotorNormMode
     from lerobot.motors.feetech import FeetechMotorsBus
@@ -1085,6 +1157,20 @@ def read_so101_calibration_endpoint(args: dict[str, Any]) -> dict[str, Any]:
         bus.disable_torque(num_retry=3)
         position = read_stable_raw_position(bus, joint, int(args.get("samples", 5)))
         return _tool_json({"port": port, "joint": joint, "raw_position": position})
+    finally:
+        if bus.is_connected:
+            bus.disconnect(disable_torque=False)
+
+
+def read_so101_raw_positions(args: dict[str, Any]) -> dict[str, Any]:
+    port = args["port"]
+    bus = calibration_bus(port)
+    try:
+        bus.connect(handshake=True)
+        bus.set_baudrate(int(args.get("baud", 1000000)))
+        bus.disable_torque(num_retry=1)
+        positions = bus.sync_read("Present_Position", normalize=False, num_retry=2)
+        return _tool_json({"port": port, "positions": positions})
     finally:
         if bus.is_connected:
             bus.disconnect(disable_torque=False)
@@ -1385,8 +1471,10 @@ HANDLERS = {
     "list_cameras": list_cameras,
     "view_camera": view_camera,
     "probe_feetech": probe_feetech,
+    "list_connected_robots": list_connected_robots,
     "prepare_so101_calibration": prepare_so101_calibration,
     "read_so101_calibration_endpoint": read_so101_calibration_endpoint,
+    "read_so101_raw_positions": read_so101_raw_positions,
     "finalize_so101_calibration": finalize_so101_calibration,
     "connect_so101": connect_so101,
     "observe": observe,

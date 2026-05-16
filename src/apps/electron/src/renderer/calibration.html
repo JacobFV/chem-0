@@ -23,38 +23,25 @@
       <section class="calibration-layout">
         <section class="panel calibration-visual">
           <div class="robot-diagram" aria-label="SO-101 calibration diagram">
-            <svg viewBox="0 0 620 420" role="img">
-              <line class="joint-link" x1="165" y1="320" x2="230" y2="210"></line>
-              <line class="joint-link" x1="230" y1="210" x2="350" y2="160"></line>
-              <line class="joint-link" x1="350" y1="160" x2="455" y2="205"></line>
-              <line class="joint-link" x1="455" y1="205" x2="510" y2="205"></line>
-              <rect class="robot-base" x="110" y="318" width="110" height="38" rx="6"></rect>
-              <circle id="axis-Z1" class="axis-node" cx="165" cy="320" r="28"></circle>
-              <circle id="axis-X1" class="axis-node" cx="230" cy="210" r="24"></circle>
-              <circle id="axis-X2" class="axis-node" cx="350" cy="160" r="24"></circle>
-              <circle id="axis-X3" class="axis-node" cx="455" cy="205" r="22"></circle>
-              <circle id="axis-Z2" class="axis-node" cx="510" cy="205" r="21"></circle>
-              <path id="axis-Hand" class="axis-hand" d="M525 188 L580 170 M525 222 L580 242"></path>
-              <text x="165" y="325">Z1</text>
-              <text x="230" y="215">X1</text>
-              <text x="350" y="165">X2</text>
-              <text x="455" y="210">X3</text>
-              <text x="510" y="210">Z2</text>
-              <text x="548" y="208">Hand</text>
-            </svg>
+            <div id="urdf-viewer" class="urdf-viewer"></div>
           </div>
+          <div id="urdf-caption" class="urdf-caption">Loading URDF...</div>
         </section>
 
         <section class="panel calibration-controls">
           <div class="calibration-fields">
             <label>
-              Serial port
-              <input id="calibration-port" value="/dev/tty.usbmodem5A460833421" />
+              Connected robot
+              <select id="calibration-robot"></select>
             </label>
             <label>
               Robot id
               <input id="calibration-robot-id" value="mcp_so101_b" />
             </label>
+          </div>
+          <div class="button-row calibration-secondary-actions">
+            <button id="refresh-robots">Refresh Robots</button>
+            <input id="calibration-port" value="/dev/tty.usbmodem5A460833421" aria-label="Selected serial port" />
           </div>
 
           <div class="step-card">

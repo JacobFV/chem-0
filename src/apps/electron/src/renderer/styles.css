@@ -411,6 +411,46 @@ pre {
   stroke-linecap: round;
 }
 
+.sim-link {
+  stroke-width: 18;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.sim-link.live {
+  stroke: #7ad9c8;
+}
+
+.sim-link.guide {
+  stroke: #d8a64f;
+  stroke-dasharray: 8 10;
+  opacity: 0.55;
+}
+
+.sim-link.active {
+  stroke: #7ad9c8;
+}
+
+.sim-joint {
+  fill: #101010;
+  stroke-width: 3;
+}
+
+.sim-joint.live {
+  stroke: #7ad9c8;
+}
+
+.sim-joint.guide {
+  stroke: #d8a64f;
+  opacity: 0.55;
+}
+
+.sim-joint.active {
+  fill: #173f39;
+  stroke: #ffffff;
+  stroke-width: 5;
+}
+
 .robot-base {
   fill: #121212;
   stroke: #555555;
@@ -437,6 +477,21 @@ pre {
 
 .axis-hand.active {
   stroke: #7ad9c8;
+}
+
+.urdf-caption {
+  color: #888888;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.calibration-secondary-actions {
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+.calibration-secondary-actions input {
+  flex: 1 1 320px;
 }
 
 .robot-diagram text {

@@ -6,6 +6,7 @@ type JsonObject = { [key: string]: JsonValue };
 contextBridge.exposeInMainWorld("chem0", {
   listTools: () => ipcRenderer.invoke("chem0:tools-list"),
   readResource: (uri: string) => ipcRenderer.invoke("chem0:resource-read", uri),
+  readUrdf: () => ipcRenderer.invoke("chem0:urdf-read"),
   callTool: (name: string, args: JsonObject = {}) => ipcRenderer.invoke("chem0:tool-call", name, args),
   createExperiment: (name: string, metadata: JsonObject = {}) => ipcRenderer.invoke("chem0:create-experiment", name, metadata),
   listExperiments: () => ipcRenderer.invoke("chem0:list-experiments"),

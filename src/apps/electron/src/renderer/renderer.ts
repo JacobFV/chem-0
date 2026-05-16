@@ -8,6 +8,7 @@ declare global {
     chem0: {
       listTools: () => Promise<JsonObject>;
       readResource: (uri: string) => Promise<JsonObject>;
+      readUrdf: () => Promise<JsonObject>;
       callTool: (name: string, args?: JsonObject) => Promise<JsonObject>;
       createExperiment: (name: string, metadata?: JsonObject) => Promise<JsonObject>;
       listExperiments: () => Promise<JsonObject>;

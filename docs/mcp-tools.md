@@ -153,6 +153,17 @@ Read-only servo bus probe. Does not move motors.
 
 Expected working result includes IDs `1..6`, model `777`, baud `1000000`.
 
+### `list_connected_robots`
+
+Lists likely Feetech servo buses and detected servo IDs so GUI users can pick a
+connected arm instead of typing a serial port.
+
+```json
+{
+  "max_id": 12
+}
+```
+
 ### `prepare_so101_calibration`
 
 GUI-friendly deterministic calibration setup. Disables torque, resets homing
@@ -175,6 +186,16 @@ joint to an endpoint.
   "port": "/dev/tty.usbmodem5A460833421",
   "joint": "shoulder_pan",
   "samples": 5
+}
+```
+
+### `read_so101_raw_positions`
+
+Reads all raw servo positions for the calibration GUI's live arm preview.
+
+```json
+{
+  "port": "/dev/tty.usbmodem5A460833421"
 }
 ```
 

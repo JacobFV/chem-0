@@ -46,8 +46,9 @@ npm run electron:dev
 ```
 
 Click **Calibrate** in the top-right toolbar. The calibration window displays
-the SO-101 axes, highlights the active endpoint, and records each raw servo
-position as you step through the prompts.
+detected robot buses, a URDF-derived SO-101 preview, a live raw-position arm
+overlay, and an amber guide pose for the active endpoint. It records each raw
+servo position as you step through the prompts.
 
 Terminal flow:
 

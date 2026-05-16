@@ -236,6 +236,22 @@ other joints.
 {}
 ```
 
+### `move_relative`
+
+Small nudge primitive.
+
+```json
+{
+  "deltas": {
+    "shoulder_pan": -5
+  },
+  "return_to_start": false,
+  "hold_seconds": 0.25
+}
+```
+
+Prefer `set_arm_pose` or `set_position` when reproducibility matters.
+
 ## Expert Placeholder
 
 ### `ask_export`
@@ -252,19 +268,3 @@ expert not available
   "question": "Is this pose safe for the next lab step?"
 }
 ```
-
-### `move_relative`
-
-Small nudge primitive.
-
-```json
-{
-  "deltas": {
-    "shoulder_pan": -5
-  },
-  "return_to_start": false,
-  "hold_seconds": 0.25
-}
-```
-
-Prefer `set_arm_pose` or `set_position` when reproducibility matters.

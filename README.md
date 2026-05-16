@@ -94,10 +94,45 @@ flowchart LR
     class camera,robot,bus hardware
 ```
 
+## MCP Affordance Map
+
+```mermaid
+flowchart TB
+    client["MCP Client / Agent"]
+    server["chem-0 MCP Server"]
+
+    discovery["Discovery<br/><code>list_serial_ports</code><br/><code>list_cameras</code>"]
+    vision["Vision<br/><code>view_camera</code><br/>JPEG / PNG MCP image"]
+    bus_tools["Servo Bus + Connection<br/><code>probe_feetech</code><br/><code>connect_so101</code><br/><code>disconnect</code>"]
+    state["State + Context<br/><code>observe</code><br/><code>get_arm_pose</code><br/><code>get_pose_table</code><br/><code>lerobot://pose-table</code>"]
+    joint_motion["Joint-Space Motion<br/><code>set_arm_pose</code><br/><code>move_pose</code> alias<br/><code>move_relative</code>"]
+    cart_motion["Cartesian Motion<br/><code>get_position</code><br/><code>set_position</code><br/>position-only IK"]
+    gripper["Gripper<br/><code>open_gripper</code><br/><code>close_gripper</code>"]
+    expert_tool["Expert Placeholder<br/><code>ask_export(question)</code><br/>returns expert not available"]
+
+    client -->|"stdio MCP"| server
+    server --> discovery
+    server --> vision
+    server --> bus_tools
+    server --> state
+    server --> joint_motion
+    server --> cart_motion
+    server --> gripper
+    server --> expert_tool
+
+    classDef client fill:#eef6ff,stroke:#8fbceb,color:#17324d
+    classDef server fill:#f0f8f3,stroke:#92c8a0,color:#1f4d2d
+    classDef affordance fill:#fffdf7,stroke:#d2bd7d,color:#3d3416
+    class client client
+    class server server
+    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool affordance
+```
+
 ## Core MCP Tools
 
 The server exposes tools for discovery, vision, robot state, and movement:
 
+- `list_serial_ports`
 - `list_cameras`
 - `view_camera`
 - `probe_feetech`

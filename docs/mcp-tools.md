@@ -314,3 +314,47 @@ expert not available
   "question": "Is this pose safe for the next lab step?"
 }
 ```
+
+## Human Voice
+
+### `speak_to_human`
+
+Speaks a short message to the nearby human and records the audio as an artifact
+when `experiment_id` is provided.
+
+ElevenLabs mode requires `ELEVENLABS_API_KEY`:
+
+```json
+{
+  "text": "Please confirm the beaker is clear before I move the arm.",
+  "provider": "elevenlabs",
+  "play": true,
+  "experiment_id": "exp_..."
+}
+```
+
+macOS fallback:
+
+```json
+{
+  "text": "Please confirm the beaker is clear before I move the arm.",
+  "provider": "system",
+  "experiment_id": "exp_..."
+}
+```
+
+### `listen_to_human`
+
+Transcribes human speech. Electron sends microphone recordings as
+`audio_base64`; MCP clients can pass a local audio file path that is visible to
+the backend process.
+
+Requires `OPENAI_API_KEY`.
+
+```json
+{
+  "audio_path": "/tmp/human-response.webm",
+  "mime_type": "audio/webm",
+  "experiment_id": "exp_..."
+}
+```

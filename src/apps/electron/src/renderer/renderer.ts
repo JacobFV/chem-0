@@ -29,10 +29,14 @@ const activeExperiment = document.querySelector<HTMLDivElement>("#active-experim
 const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
 const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
 const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
+const recordAudio = document.querySelector<HTMLButtonElement>("#record-audio")!;
+const stopAudio = document.querySelector<HTMLButtonElement>("#stop-audio")!;
 
 let experimentId = "";
 let sessionId = "";
 let assistantBubble: HTMLDivElement | null = null;
+let mediaRecorder: MediaRecorder | null = null;
+let recordedChunks: BlobPart[] = [];
 
 function show(value: unknown): void {
   output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -162,7 +166,11 @@ document.querySelector("#call-tool")?.addEventListener("click", async () => {
 });
 
 sendMessage.addEventListener("click", async () => {
-  const message = chatInput.value.trim();
+  await sendToAgent(chatInput.value);
+});
+
+async function sendToAgent(raw: string): Promise<void> {
+  const message = raw.trim();
   if (!message || !experimentId) return;
   chatInput.value = "";
   assistantBubble = null;
@@ -173,6 +181,50 @@ sendMessage.addEventListener("click", async () => {
   };
   if (sessionId) payload.session_id = sessionId;
   await window.chem0.sendAgentMessage(payload);
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  let binary = "";
+  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+recordAudio.addEventListener("click", async () => {
+  if (!experimentId) {
+    show("Create or select an experiment before recording audio.");
+    return;
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size > 0) recordedChunks.push(event.data);
+  });
+  mediaRecorder.addEventListener("stop", () => {
+    for (const track of stream.getTracks()) track.stop();
+  });
+  mediaRecorder.start();
+  recordAudio.disabled = true;
+  stopAudio.disabled = false;
+  appendChat("system", "Recording human audio...");
+});
+
+stopAudio.addEventListener("click", async () => {
+  if (!mediaRecorder) return;
+  const stopped = new Promise<void>((resolve) => mediaRecorder?.addEventListener("stop", () => resolve(), { once: true }));
+  mediaRecorder.stop();
+  await stopped;
+  recordAudio.disabled = false;
+  stopAudio.disabled = true;
+  const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+  mediaRecorder = null;
+  const result = await call("listen_to_human", {
+    audio_base64: await blobToBase64(blob),
+    mime_type: blob.type || "audio/webm"
+  });
+  const text = typeof result.text === "string" ? result.text.trim() : "";
+  if (text) await sendToAgent(text);
 });
 
 window.chem0.onAgentEvent((event) => {

@@ -47,6 +47,8 @@ set_position
 open_gripper
 close_gripper
 ask_export
+speak_to_human
+listen_to_human
 move_relative
 disconnect
 create_experiment
@@ -64,7 +66,7 @@ lerobot://pose-table
 Experiment logging smoke path:
 
 1. Call `create_experiment`.
-2. Call `ask_export` with the returned `experiment_id`.
+2. Call `ask_export` or `speak_to_human` with the returned `experiment_id`.
 3. Call `list_agent_session_events`.
 4. Expected event types include `message`, `tool_call`, and `tool_response`.
 

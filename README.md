@@ -12,8 +12,9 @@
 This repository contains a compact local experiment platform for a Hugging Face
 LeRobot SO-101/SO-100 follower arm. Both the stdio MCP server and the Electron
 GUI use the same TypeScript Node backend. That backend owns experiment tracking,
-SQLite persistence, blob artifacts, OpenAI GPT-5.5 streaming sessions, and the
-small Python bridge used for LeRobot/OpenCV hardware calls.
+SQLite persistence, blob artifacts, OpenAI GPT-5.5 streaming sessions, optional
+human voice I/O, and the small Python bridge used for LeRobot/OpenCV hardware
+calls.
 
 The project is intentionally small enough to understand at a science-fair table:
 
@@ -37,6 +38,8 @@ make robot control more inspectable:
 - Camera frames are available through the same MCP channel as motion commands.
 - Experiments are persisted to local SQLite, with camera frames stored as local
   blob artifacts beside the database.
+- The agent can talk to nearby humans through optional ElevenLabs TTS and
+  OpenAI audio transcription.
 
 That makes the system useful for studying agentic control, safety boundaries,
 visual feedback, and the gap between language-model spatial reasoning and real
@@ -68,6 +71,7 @@ flowchart LR
     db["SQLite Experiment Store<br/><code>data/chem0.sqlite</code>"]
     blobs["Blob Store<br/><code>data/blobs</code>"]
     openai["OpenAI Responses API<br/><code>gpt-5.5</code>"]
+    audio["Voice I/O<br/><code>speak_to_human</code><br/><code>listen_to_human</code>"]
     bridge["Python Bridge<br/><code>src/apps/python-bridge</code>"]
     core["Python Core<br/><code>src/lib/chem0</code>"]
     pose["Pose Table Resource<br/><code>lerobot://pose-table</code>"]
@@ -85,6 +89,7 @@ flowchart LR
     backend -->|"experiments<br/>sessions<br/>events"| db
     backend -->|"camera/tool artifacts"| blobs
     backend <-->|"agent stream<br/>tool loop"| openai
+    backend -->|"TTS/STT"| audio
     backend <-->|"JSON lines"| bridge
     bridge -->|"dispatch"| core
     core -->|"resources/read"| pose
@@ -107,7 +112,7 @@ flowchart LR
     classDef expert fill:#f7f7f7,stroke:#aaa,color:#333
     classDef hardware fill:#f4f1ff,stroke:#a99be8,color:#2f255f
     class agent,desktop agent
-    class mcp,backend,bridge,db,blobs,openai,pose,calib server
+    class mcp,backend,bridge,db,blobs,openai,audio,pose,calib server
     class core core
     class safety safety
     class ik ik
@@ -130,6 +135,7 @@ flowchart TB
     cart_motion["Cartesian Motion<br/><code>get_position</code><br/><code>set_position</code><br/>position-only IK"]
     gripper["Gripper<br/><code>open_gripper</code><br/><code>close_gripper</code>"]
     expert_tool["Expert Placeholder<br/><code>ask_export(question)</code><br/>returns expert not available"]
+    voice["Human Voice<br/><code>speak_to_human</code><br/><code>listen_to_human</code>"]
     experiments["Experiments<br/><code>create_experiment</code><br/><code>list_experiments</code><br/><code>list_agent_session_events</code><br/><code>list_experiment_artifacts</code>"]
 
     client -->|"stdio MCP"| server
@@ -141,6 +147,7 @@ flowchart TB
     server --> cart_motion
     server --> gripper
     server --> expert_tool
+    server --> voice
     server --> experiments
 
     classDef client fill:#eef6ff,stroke:#8fbceb,color:#17324d
@@ -148,7 +155,7 @@ flowchart TB
     classDef affordance fill:#fffdf7,stroke:#d2bd7d,color:#3d3416
     class client client
     class server server
-    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool,experiments affordance
+    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool,voice,experiments affordance
 ```
 
 ## Core MCP Tools
@@ -169,6 +176,8 @@ The server exposes tools for discovery, vision, robot state, and movement:
 - `open_gripper`
 - `close_gripper`
 - `ask_export`
+- `speak_to_human`
+- `listen_to_human`
 - `move_relative`
 - `disconnect`
 - `create_experiment`
@@ -309,6 +318,18 @@ LeRobot servos, connect to the SO101 arm, observe the current pose, then use
 get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
 for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 ```
+
+Optional voice environment:
+
+```sh
+export OPENAI_API_KEY=...
+export ELEVENLABS_API_KEY=...
+export ELEVENLABS_VOICE_ID=...
+```
+
+`speak_to_human` uses ElevenLabs when configured, or `provider: "system"` for
+macOS system speech. `listen_to_human` transcribes Electron-recorded mic clips
+or an MCP-provided local `audio_path`.
 
 ## Documentation
 

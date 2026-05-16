@@ -10,7 +10,8 @@ experiment_id into each hardware/camera/robot tool call. Read
 lerobot://pose-table, list cameras, view camera 0, probe the LeRobot servos,
 connect to the SO101 arm, observe the current pose, then use
 get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
-for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
+for IK moves. Use speak_to_human/listen_to_human when human confirmation is
+needed. Keep max_step <= 5 and stay inside calibrated limits.
 ```
 
 ## Safe Startup Sequence
@@ -26,10 +27,12 @@ for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 9. Move with `set_arm_pose` for joint-space commands or `set_position` for
    Cartesian IK commands.
 10. Use `ask_export(question)` only as a placeholder for future expert review;
-   it currently returns `expert not available`.
-11. `list_agent_session_events` and `list_experiment_artifacts` when reviewing
+    it currently returns `expert not available`.
+11. Use `speak_to_human` before risky or ambiguous actions and
+    `listen_to_human` to capture the reply.
+12. `list_agent_session_events` and `list_experiment_artifacts` when reviewing
     the run.
-12. `disconnect` at the end.
+13. `disconnect` at the end.
 
 ## Motion Guidance
 

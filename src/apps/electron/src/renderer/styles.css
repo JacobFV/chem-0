@@ -218,6 +218,12 @@ textarea {
   font-family: inherit;
 }
 
+.composer-actions {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
 .output-panel {
   min-height: 260px;
 }

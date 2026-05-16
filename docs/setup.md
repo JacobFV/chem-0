@@ -100,3 +100,17 @@ Restart Codex after changing MCP config.
 MCP clients should call `create_experiment` first, then pass the returned
 `experiment_id` into hardware, camera, and robot tool calls so the backend can
 append `tool_call` and `tool_response` records to the experiment.
+
+## Optional Voice
+
+For Electron-hosted agent sessions and MCP voice tools:
+
+```sh
+export OPENAI_API_KEY=...
+export ELEVENLABS_API_KEY=...
+export ELEVENLABS_VOICE_ID=...
+```
+
+`OPENAI_API_KEY` is required for GPT-5.5 sessions and `listen_to_human`.
+`ELEVENLABS_API_KEY` is optional; without it, `speak_to_human` can still use
+`provider: "system"` on macOS.

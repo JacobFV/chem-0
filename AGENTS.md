@@ -43,6 +43,18 @@ npm run build
 node src/apps/mcp-node/dist/server.js
 ```
 
+## Optional Voice Environment
+
+```sh
+export OPENAI_API_KEY=...
+export ELEVENLABS_API_KEY=...
+export ELEVENLABS_VOICE_ID=...
+```
+
+`OPENAI_API_KEY` is required for GPT-5.5 sessions and `listen_to_human`.
+`ELEVENLABS_API_KEY` is optional; `speak_to_human` can use `provider: "system"`
+on macOS without it.
+
 ## Codex MCP Config
 
 ```json
@@ -73,10 +85,12 @@ node src/apps/mcp-node/dist/server.js
 10. Move with `set_arm_pose` for joint-space control or `set_position` for IK.
 11. Use `ask_export(question)` only as a placeholder for future expert review;
     it currently returns `expert not available`.
-12. Keep `max_step <= 5` unless a human explicitly approves otherwise.
-13. Use `list_agent_session_events` and `list_experiment_artifacts` to review
+12. Use `speak_to_human` before risky or ambiguous actions and
+    `listen_to_human` to capture the reply.
+13. Keep `max_step <= 5` unless a human explicitly approves otherwise.
+14. Use `list_agent_session_events` and `list_experiment_artifacts` to review
     the run.
-14. `disconnect`.
+15. `disconnect`.
 
 MCP clients cannot fully mirror their chat history into chem-0. Passing
 `experiment_id` into tool calls is therefore required for useful MCP-side

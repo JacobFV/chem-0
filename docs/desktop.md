@@ -25,6 +25,7 @@ MCP client        -> stdio MCP    -> @chem0/backend -> Python bridge -> LeRobot/
 - Stream GPT-5.5 Responses API events into the GUI.
 - Run the tool loop when the model requests a backend tool.
 - Forward hardware calls to the small Python bridge.
+- Provide optional voice I/O tools for human conversation.
 
 ## Run
 
@@ -47,6 +48,7 @@ The console includes:
 
 - experiment creation and selection,
 - GPT-5.5 streaming agent session chat,
+- microphone recording for human speech transcription,
 - persisted session event replay,
 - tool discovery,
 - pose table readout,
@@ -55,6 +57,7 @@ The console includes:
 - current arm pose and Cartesian position calls,
 - gripper open/close calls,
 - `ask_export(question)` placeholder call,
+- `speak_to_human` and `listen_to_human` voice tools,
 - an arbitrary backend tool-call JSON panel.
 
 Motion tools are exposed through the generic tool-call panel rather than large

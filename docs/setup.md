@@ -35,6 +35,38 @@ The tested local calibration file is:
 
 Do not delete it unless recalibrating the physical arm.
 
+For a second arm or a newly assembled arm, use a new `robot_id` and create a
+separate calibration file instead of overwriting `mcp_so101.json`.
+
+Deterministic endpoint calibration:
+
+```sh
+npm run calibrate:so101 -- \
+  --port /dev/tty.usbmodem5A460833421 \
+  --robot-id mcp_so101_b
+```
+
+The script prompts joint-by-joint in this order:
+
+| Axis | LeRobot joint | Prompted motion |
+| --- | --- | --- |
+| `Z1` | `shoulder_pan` | base Z roll left, then right |
+| `X1` | `shoulder_lift` | base X pitch backward, then forward |
+| `X2` | `elbow_flex` | elbow bent/backward, then extended/forward |
+| `X3` | `wrist_flex` | wrist down/backward, then up/forward |
+| `Z2` | `wrist_roll` | wrist roll counterclockwise/left, then clockwise/right |
+| `Hand` | `gripper` | fully closed, then fully open |
+
+It disables torque, resets homing/limits to the factory range, records raw
+servo endpoints when you press Enter, writes:
+
+```text
+~/.cache/huggingface/lerobot/calibration/robots/so_follower/<robot_id>.json
+```
+
+and also writes the calibration back to the servo registers. Use
+`--no-write-motors` to create only the JSON file.
+
 ## Python Environment
 
 Create and install:

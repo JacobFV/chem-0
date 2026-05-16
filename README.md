@@ -53,6 +53,7 @@ src/lib/chem0/            Python hardware core: robot, camera, kinematics, tool 
 src/apps/mcp-node/        TypeScript stdio MCP server entrypoint
 src/apps/python-bridge/   Line-delimited JSON bridge from Node to Python core
 src/apps/electron/        Chem-0 Lab Console desktop app
+scripts/                  Setup, dependency, and deterministic calibration scripts
 assets/                   Welcome image and SO-101 kinematic URDF
 docs/                     Detailed setup, operations, testing, and references
 AGENTS.md                 Agent handoff and operating instructions
@@ -259,6 +260,20 @@ serial port: /dev/cu.usbmodem5AB01815731
 camera id: 0
 calibration: ~/.cache/huggingface/lerobot/calibration/robots/so_follower/mcp_so101.json
 ```
+
+Each physical arm should have its own LeRobot calibration id. For a new arm,
+run deterministic endpoint calibration instead of reusing the old `mcp_so101`
+file:
+
+```sh
+npm run calibrate:so101 -- \
+  --port /dev/tty.usbmodem5A460833421 \
+  --robot-id mcp_so101_b
+```
+
+The script prompts for `Z1`, `X1`, `X2`, `X3`, `Z2`, and `Hand` endpoints,
+then writes a LeRobot-compatible calibration file and servo register limits for
+that `robot_id`.
 
 The last validated visual pose was approximately:
 

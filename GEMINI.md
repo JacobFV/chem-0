@@ -35,6 +35,18 @@ Calibration file:
 /Users/vibestartup/.cache/huggingface/lerobot/calibration/robots/so_follower/mcp_so101.json
 ```
 
+For a new physical arm, do not reuse that file. Create a new robot id and run:
+
+```sh
+npm run calibrate:so101 -- \
+  --port /dev/tty.usbmodem5A460833421 \
+  --robot-id mcp_so101_b
+```
+
+The deterministic calibration prompts for `Z1`, `X1`, `X2`, `X3`, `Z2`, and
+`Hand` endpoints, then writes the LeRobot calibration JSON and servo register
+limits for that robot id.
+
 ## Run Server
 
 ```sh

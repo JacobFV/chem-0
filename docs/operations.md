@@ -34,6 +34,31 @@ needed. Keep max_step <= 5 and stay inside calibrated limits.
     the run.
 13. `disconnect` at the end.
 
+## Deterministic Calibration
+
+Use deterministic endpoint calibration when an arm is new, rebuilt, or attached
+to a different servo set. Give each physical arm its own `robot_id`.
+
+```sh
+npm run calibrate:so101 -- \
+  --port /dev/tty.usbmodem5A460833421 \
+  --robot-id mcp_so101_b
+```
+
+The script prompts for `Z1`, `X1`, `X2`, `X3`, `Z2`, and `Hand` endpoints one at
+a time, records each raw servo position after Enter, and writes a LeRobot
+calibration file under the matching `robot_id`. After calibrating, connect with
+the same id:
+
+```json
+{
+  "port": "/dev/tty.usbmodem5A460833421",
+  "id": "mcp_so101_b",
+  "robot_id": "mcp_so101_b",
+  "calibrate": false
+}
+```
+
 ## Motion Guidance
 
 Prefer:

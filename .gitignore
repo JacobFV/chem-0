@@ -1,6 +1,9 @@
 .venv/
 node_modules/
+data/
 src/apps/electron/dist/
+src/apps/mcp-node/dist/
+src/lib/backend/dist/
 __pycache__/
 *.py[cod]
 .DS_Store

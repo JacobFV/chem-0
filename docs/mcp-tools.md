@@ -1,7 +1,57 @@
 # MCP Tools
 
 `chem-0` exposes a compact stdio MCP interface for camera viewing, joint-space
-robot control, and bounded Cartesian IK.
+robot control, bounded Cartesian IK, and experiment logging. The MCP transport
+is implemented in TypeScript at `src/apps/mcp-node`; hardware calls are
+forwarded through the shared Node backend to the Python bridge.
+
+Every hardware/camera/robot tool accepts an optional `experiment_id`. When it
+is present, the backend appends `tool_call` and `tool_response` events to that
+experiment. Image responses are also copied into `data/blobs` and referenced
+from `experiment_artifacts`.
+
+## Experiments
+
+### `create_experiment`
+
+Creates an experiment and a default GPT-5.5 agent session in SQLite.
+
+```json
+{
+  "name": "Bench run",
+  "metadata": {
+    "operator": "local"
+  }
+}
+```
+
+### `list_experiments`
+
+Lists tracked experiments.
+
+```json
+{}
+```
+
+### `list_agent_session_events`
+
+Lists append-only events for an experiment.
+
+```json
+{
+  "experiment_id": "exp_..."
+}
+```
+
+### `list_experiment_artifacts`
+
+Lists local blob references for an experiment.
+
+```json
+{
+  "experiment_id": "exp_..."
+}
+```
 
 ## Discovery
 

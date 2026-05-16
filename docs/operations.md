@@ -5,26 +5,31 @@ Use this as the default operating sequence for an agent controlling the arm.
 ## First Prompt For An Agent
 
 ```text
-Use the chem-0 MCP. Read lerobot://pose-table, list cameras, view camera 0,
-probe the LeRobot servos, connect to the SO101 arm, observe the current pose,
-then use get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
+Use the chem-0 MCP. Create an experiment first and pass the returned
+experiment_id into each hardware/camera/robot tool call. Read
+lerobot://pose-table, list cameras, view camera 0, probe the LeRobot servos,
+connect to the SO101 arm, observe the current pose, then use
+get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
 for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 ```
 
 ## Safe Startup Sequence
 
-1. `resources/read` for `lerobot://pose-table`.
-2. `list_cameras`.
-3. `view_camera` for camera `0`.
-4. `probe_feetech` on `/dev/cu.usbmodem5AB01815731` with `max_id: 6`.
-5. Confirm IDs `1..6` respond.
-6. `connect_so101`.
-7. `observe`, then `get_arm_pose`.
-8. Move with `set_arm_pose` for joint-space commands or `set_position` for
+1. `create_experiment`.
+2. `resources/read` for `lerobot://pose-table`.
+3. `list_cameras`.
+4. `view_camera` for camera `0`.
+5. `probe_feetech` on `/dev/cu.usbmodem5AB01815731` with `max_id: 6`.
+6. Confirm IDs `1..6` respond.
+7. `connect_so101`.
+8. `observe`, then `get_arm_pose`.
+9. Move with `set_arm_pose` for joint-space commands or `set_position` for
    Cartesian IK commands.
-9. Use `ask_export(question)` only as a placeholder for future expert review;
+10. Use `ask_export(question)` only as a placeholder for future expert review;
    it currently returns `expert not available`.
-10. `disconnect` at the end.
+11. `list_agent_session_events` and `list_experiment_artifacts` when reviewing
+    the run.
+12. `disconnect` at the end.
 
 ## Motion Guidance
 

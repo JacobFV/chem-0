@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
+    "src/lib/backend",
+    "src/apps/mcp-node",
     "src/apps/electron"
   ],
   "scripts": {
+    "backend:build": "npm --workspace @chem0/backend run build",
+    "mcp:build": "npm --workspace @chem0/mcp run build",
     "electron:build": "npm --workspace @chem0/electron run build",
     "electron:dev": "npm --workspace @chem0/electron run dev",
-    "electron:watch": "npm --workspace @chem0/electron run watch"
+    "electron:watch": "npm --workspace @chem0/electron run watch",
+    "build": "npm run backend:build && npm run mcp:build && npm run electron:build"
   }
 }

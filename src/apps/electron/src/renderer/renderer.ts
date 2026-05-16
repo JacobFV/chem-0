@@ -9,24 +9,98 @@ declare global {
       listTools: () => Promise<JsonObject>;
       readResource: (uri: string) => Promise<JsonObject>;
       callTool: (name: string, args?: JsonObject) => Promise<JsonObject>;
+      createExperiment: (name: string, metadata?: JsonObject) => Promise<JsonObject>;
+      listExperiments: () => Promise<JsonObject>;
+      listEvents: (experimentId: string) => Promise<JsonObject>;
+      listArtifacts: (experimentId: string) => Promise<JsonObject>;
+      sendAgentMessage: (input: JsonObject) => Promise<JsonObject>;
+      onAgentEvent: (callback: (event: JsonObject) => void) => () => void;
     };
   }
 }
 
-const reasoning = document.querySelector<HTMLPreElement>("#reasoning");
+const output = document.querySelector<HTMLPreElement>("#output")!;
+const experimentSelect = document.querySelector<HTMLSelectElement>("#experiment")!;
+const experimentName = document.querySelector<HTMLInputElement>("#experiment-name")!;
+const activeExperiment = document.querySelector<HTMLDivElement>("#active-experiment")!;
+const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
+const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
+const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
 const camFrames: (HTMLImageElement | null)[] = [
   document.querySelector<HTMLImageElement>("#cam-0"),
   document.querySelector<HTMLImageElement>("#cam-1"),
   document.querySelector<HTMLImageElement>("#cam-2"),
 ];
 
+let experimentId = "";
+let sessionId = "";
+let assistantBubble: HTMLDivElement | null = null;
+
 function show(value: unknown): void {
-  if (!reasoning) return;
-  reasoning.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+function withExperiment(args: JsonObject = {}): JsonObject {
+  return experimentId ? { ...args, experiment_id: experimentId } : args;
+}
+
+function setActive(experiment: JsonObject, session?: JsonObject): void {
+  experimentId = String(experiment.id ?? "");
+  sessionId = String(session?.id ?? sessionId);
+  activeExperiment.textContent = experimentId ? `${String(experiment.name ?? "Experiment")} · ${experimentId}` : "No experiment";
+}
+
+function appendChat(role: string, text: string): HTMLDivElement {
+  const item = document.createElement("div");
+  item.className = `chat-item ${role}`;
+  const label = document.createElement("div");
+  label.className = "chat-role";
+  label.textContent = role;
+  const body = document.createElement("div");
+  body.className = "chat-body";
+  body.textContent = text;
+  item.append(label, body);
+  chatLog.append(item);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  return body;
+}
+
+function renderEvents(events: JsonObject[]): void {
+  chatLog.replaceChildren();
+  for (const event of events) {
+    const type = String(event.type ?? "");
+    const role = String(event.role ?? "system");
+    const content = (event.content ?? {}) as JsonObject;
+    if (type === "message" && role !== "system") appendChat(role, String(content.text ?? ""));
+    if (type === "tool_call") appendChat("tool", `${String(event.name ?? "tool")} ${JSON.stringify(content)}`);
+    if (type === "tool_response") appendChat("tool", `${String(event.name ?? "tool")} response`);
+    if (type === "error") appendChat("error", String(content.message ?? content.text ?? ""));
+  }
+}
+
+async function refreshExperiments(): Promise<void> {
+  const result = await window.chem0.listExperiments();
+  const experiments = (result.experiments ?? []) as JsonObject[];
+  experimentSelect.replaceChildren();
+  for (const experiment of experiments) {
+    const option = document.createElement("option");
+    option.value = String(experiment.id);
+    option.textContent = `${String(experiment.name)} · ${String(experiment.id)}`;
+    experimentSelect.append(option);
+  }
+  if (!experimentId && experiments[0]) setActive(experiments[0]);
+  if (experimentId) experimentSelect.value = experimentId;
+}
+
+async function loadEvents(): Promise<void> {
+  if (!experimentId) return;
+  const result = await window.chem0.listEvents(experimentId);
+  renderEvents((result.events ?? []) as JsonObject[]);
+  show(result);
 }
 
 async function call(name: string, args: JsonObject = {}): Promise<JsonObject> {
-  const result = await window.chem0.callTool(name, args);
+  const result = await window.chem0.callTool(name, withExperiment(args));
   show(result);
   return result;
 }
@@ -51,13 +125,54 @@ async function refreshCamera(id: number): Promise<void> {
 }
 
 async function boot(): Promise<void> {
-  const result = await window.chem0.listTools();
-  show(result);
+  const [tools] = await Promise.all([window.chem0.listTools(), refreshExperiments()]);
+  show(tools);
+  await loadEvents();
   void Promise.all([refreshCamera(0), refreshCamera(1), refreshCamera(2)]);
 }
 
+document.querySelector("#create-experiment")?.addEventListener("click", async () => {
+  const result = await window.chem0.createExperiment(experimentName.value.trim() || "Untitled experiment", { app: "electron" });
+  setActive(result.experiment as JsonObject, result.session as JsonObject);
+  await refreshExperiments();
+  await loadEvents();
+});
+
+experimentSelect.addEventListener("change", async () => {
+  experimentId = experimentSelect.value;
+  sessionId = "";
+  activeExperiment.textContent = experimentId || "No experiment";
+  await loadEvents();
+});
+
 document.querySelector("#list-tools")?.addEventListener("click", () => void boot());
 document.querySelector("#pose-table")?.addEventListener("click", async () => show(await window.chem0.readResource("lerobot://pose-table")));
-document.querySelector("#ask-export")?.addEventListener("click", () => void call("ask_export", { question: "Is this operation safe?" }));
+
+sendMessage.addEventListener("click", async () => {
+  const message = chatInput.value.trim();
+  if (!message || !experimentId) return;
+  chatInput.value = "";
+  assistantBubble = null;
+  const payload: JsonObject = {
+    experiment_id: experimentId,
+    message,
+    model: "gpt-5.5"
+  };
+  if (sessionId) payload.session_id = sessionId;
+  await window.chem0.sendAgentMessage(payload);
+});
+
+window.chem0.onAgentEvent((event) => {
+  if (event.experiment_id !== experimentId) return;
+  if (event.session_id && !sessionId) sessionId = String(event.session_id);
+  if (event.type === "message") appendChat(String(event.role ?? "user"), String(event.text ?? ""));
+  if (event.type === "assistant_delta") {
+    if (!assistantBubble) assistantBubble = appendChat("assistant", "");
+    assistantBubble.textContent += String(event.text ?? "");
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+  if (event.type === "tool_response") appendChat("tool", `${String(event.name ?? "tool")} response`);
+  if (event.type === "error") appendChat("error", String(event.message ?? ""));
+});
 
 void boot();

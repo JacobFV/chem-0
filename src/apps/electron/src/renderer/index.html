@@ -11,14 +11,26 @@
       <header class="topbar">
         <div>
           <h1>chem-0</h1>
-          <p>Local LeRobot control console backed by the same stdio MCP server used by agents.</p>
+          <p>Local experiment console with shared Node backend, LeRobot tools, SQLite sessions, and artifact capture.</p>
         </div>
         <div class="actions">
           <button id="list-tools">Tools</button>
           <button id="pose-table">Pose Table</button>
-          <button id="ask-export">Ask Expert</button>
         </div>
       </header>
+
+      <section class="experiment-bar">
+        <label>
+          Experiment
+          <select id="experiment"></select>
+        </label>
+        <label>
+          New experiment
+          <input id="experiment-name" value="Bench run" />
+        </label>
+        <button id="create-experiment">Create</button>
+        <div id="active-experiment">No experiment</div>
+      </section>
 
       <section class="grid">
         <section class="left-column">
@@ -27,7 +39,8 @@
             <div id="ph-graph" class="ph-graph"></div>
           </section>
           <section class="panel small-panel">
-            <div id="small-container" class="small-container"></div>
+            <h2>Backend Output</h2>
+            <pre id="output"></pre>
           </section>
         </section>
 
@@ -50,9 +63,13 @@
             </div>
           </section>
 
-          <section class="panel reasoning-panel">
-            <h2>Agent Reasoning</h2>
-            <pre id="reasoning"></pre>
+          <section class="panel chat-panel">
+            <h2>Agent Session</h2>
+            <div id="chat-log" class="chat-log"></div>
+            <div class="composer">
+              <textarea id="chat-input" spellcheck="true" placeholder="Ask the agent to inspect, reason, or call robot tools."></textarea>
+              <button id="send-message">Send</button>
+            </div>
           </section>
         </section>
       </section>

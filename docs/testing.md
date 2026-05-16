@@ -1,23 +1,26 @@
 # Testing
 
-## Syntax Check
+## Syntax And Build
 
 ```sh
-.venv/bin/python -m py_compile src/apps/mcp/server.py src/lib/chem0/core.py src/lib/chem0/mcp_server.py
+PYTHONPATH=src/lib .venv/bin/python -m py_compile src/apps/python-bridge/bridge.py src/lib/chem0/core.py
+npm run build
+npm audit --omit=dev
 ```
 
-## Electron Build Check
+`npm run build` compiles:
 
-After installing Node dependencies:
-
-```sh
-npm run electron:build
-```
-
-This compiles the TypeScript Electron main/preload/renderer code and copies the
-renderer HTML/CSS into `src/apps/electron/dist`.
+- `src/lib/backend`
+- `src/apps/mcp-node`
+- `src/apps/electron`
 
 ## MCP Protocol Smoke Test
+
+Start the built MCP server:
+
+```sh
+node src/apps/mcp-node/dist/server.js
+```
 
 Expected MCP surfaces:
 
@@ -25,8 +28,9 @@ Expected MCP surfaces:
 - `tools/list`
 - `resources/list`
 - `resources/read`
+- `tools/call`
 
-Expected tools:
+Expected tools include:
 
 ```text
 list_serial_ports
@@ -45,6 +49,10 @@ close_gripper
 ask_export
 move_relative
 disconnect
+create_experiment
+list_experiments
+list_agent_session_events
+list_experiment_artifacts
 ```
 
 Expected resource:
@@ -53,15 +61,23 @@ Expected resource:
 lerobot://pose-table
 ```
 
+Experiment logging smoke path:
+
+1. Call `create_experiment`.
+2. Call `ask_export` with the returned `experiment_id`.
+3. Call `list_agent_session_events`.
+4. Expected event types include `message`, `tool_call`, and `tool_response`.
+
 ## Camera Test
 
-Run through MCP:
+Run through MCP or Electron:
 
 ```json
 {
   "name": "list_cameras",
   "arguments": {
-    "max_id": 1
+    "max_id": 1,
+    "experiment_id": "exp_..."
   }
 }
 ```
@@ -85,7 +101,8 @@ Then call `view_camera`:
     "width": 320,
     "height": 240,
     "format": "jpeg",
-    "quality": 75
+    "quality": 75,
+    "experiment_id": "exp_..."
   }
 }
 ```
@@ -97,6 +114,9 @@ text
 image
 ```
 
+When `experiment_id` is present, the backend also writes the image into
+`data/blobs` and records an `experiment_artifacts` row.
+
 ## Robot Test
 
 Read-only probe:
@@ -106,7 +126,8 @@ Read-only probe:
   "name": "probe_feetech",
   "arguments": {
     "port": "/dev/cu.usbmodem5AB01815731",
-    "max_id": 6
+    "max_id": 6,
+    "experiment_id": "exp_..."
   }
 }
 ```
@@ -125,12 +146,13 @@ Expected model:
 
 Safe no-op motion path:
 
-1. `connect_so101`.
-2. `observe`.
-3. Build a six-parameter pose from the current observation.
-4. Call `set_arm_pose` with that current pose.
-5. Expected `steps: 0`.
-6. `disconnect`.
+1. `create_experiment`.
+2. `connect_so101`.
+3. `observe`.
+4. Build a six-parameter pose from the current observation.
+5. Call `set_arm_pose` with that current pose and `max_step <= 5`.
+6. Expected `steps: 0`.
+7. `disconnect`.
 
 This verifies the absolute pose path without intentionally changing the arm.
 
@@ -139,8 +161,8 @@ This verifies the absolute pose path without intentionally changing the arm.
 This verifies that the repo-local URDF and `placo` solver import correctly:
 
 ```sh
-.venv/bin/python - <<'PY'
-from lerobot_mcp_server import forward_kinematics_for_pose, validate_pose
+PYTHONPATH=src/lib .venv/bin/python - <<'PY'
+from chem0.core import forward_kinematics_for_pose, validate_pose
 
 pose = validate_pose({
     "shoulder_pan": 0,

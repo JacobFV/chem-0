@@ -9,12 +9,11 @@
 > Can a language-model agent safely operate a low-cost robot arm while using a
 > live camera feed as its visual feedback loop?
 
-This repository contains a compact stdio MCP server that lets an MCP-capable
-agent, such as Codex, connect to a Hugging Face LeRobot SO-101/SO-100 follower
-arm, inspect camera frames, read calibrated joint poses, command the arm
-through a six-parameter pose interface, and optionally move the end effector
-through a small Cartesian IK interface. The repo now also includes a TypeScript
-Electron console that uses the same MCP server over stdio.
+This repository contains a compact local experiment platform for a Hugging Face
+LeRobot SO-101/SO-100 follower arm. Both the stdio MCP server and the Electron
+GUI use the same TypeScript Node backend. That backend owns experiment tracking,
+SQLite persistence, blob artifacts, OpenAI GPT-5.5 streaming sessions, and the
+small Python bridge used for LeRobot/OpenCV hardware calls.
 
 The project is intentionally small enough to understand at a science-fair table:
 
@@ -22,7 +21,7 @@ The project is intentionally small enough to understand at a science-fair table:
 2. The camera returns a frame to the agent.
 3. The agent receives a table of safe reference poses.
 4. The agent chooses a target joint pose or Cartesian position.
-5. The MCP server validates the command and moves the arm in small steps.
+5. The Node backend validates and logs the command, then moves the arm in small steps.
 
 ## Why This Matters
 
@@ -30,12 +29,14 @@ Many lab automation demos assume expensive industrial hardware, custom GUIs, or
 hard-coded scripts. `chem-0` asks whether a simple open-source interface can
 make robot control more inspectable:
 
-- Every command is a named MCP tool call.
+- Every command is a named tool call, whether it came from MCP or Electron.
 - Every full-arm movement is a six-number pose or a bounded Cartesian target.
 - Every pose is checked against calibrated limits.
 - Cartesian motion uses a repo-local SO-101 URDF plus LeRobot/`placo` FK.
 - Every agent can read the same pose table before moving.
 - Camera frames are available through the same MCP channel as motion commands.
+- Experiments are persisted to local SQLite, with camera frames stored as local
+  blob artifacts beside the database.
 
 That makes the system useful for studying agentic control, safety boundaries,
 visual feedback, and the gap between language-model spatial reasoning and real
@@ -44,8 +45,10 @@ hardware.
 ## What Is In The Repo
 
 ```text
-src/lib/chem0/            Python core: robot, camera, kinematics, MCP tool handlers
-src/apps/mcp/             Python stdio MCP server entrypoint
+src/lib/backend/          TypeScript Node backend: experiments, SQLite, blobs, GPT-5.5, Python bridge
+src/lib/chem0/            Python hardware core: robot, camera, kinematics, tool handlers
+src/apps/mcp-node/        TypeScript stdio MCP server entrypoint
+src/apps/python-bridge/   Line-delimited JSON bridge from Node to Python core
 src/apps/electron/        TypeScript Electron desktop console
 assets/                   Welcome image and SO-101 kinematic URDF
 docs/                     Detailed setup, operations, testing, and references
@@ -60,7 +63,12 @@ CLAUDE.md                 Same as AGENTS.md
 flowchart LR
     agent["MCP Client / LLM Agent<br/>Codex, Claude, Gemini, etc."]
     desktop["Electron Console<br/><code>src/apps/electron</code>"]
-    server["chem-0 stdio MCP Server<br/><code>src/apps/mcp/server.py</code>"]
+    mcp["Node stdio MCP Server<br/><code>src/apps/mcp-node</code>"]
+    backend["Shared Node Backend<br/><code>@chem0/backend</code>"]
+    db["SQLite Experiment Store<br/><code>data/chem0.sqlite</code>"]
+    blobs["Blob Store<br/><code>data/blobs</code>"]
+    openai["OpenAI Responses API<br/><code>gpt-5.5</code>"]
+    bridge["Python Bridge<br/><code>src/apps/python-bridge</code>"]
     core["Python Core<br/><code>src/lib/chem0</code>"]
     pose["Pose Table Resource<br/><code>lerobot://pose-table</code>"]
     ik["SO-101 FK / IK<br/><code>placo</code> + URDF"]
@@ -71,12 +79,17 @@ flowchart LR
     bus["Feetech STS3215 Servo Bus<br/>IDs 1-6 at 1 Mbps"]
     calib["Saved Calibration<br/><code>mcp_so101.json</code>"]
 
-    agent <-->|"stdio MCP<br/>tools + resources"| server
-    desktop <-->|"stdio MCP<br/>same tools"| server
-    server -->|"dispatch"| core
+    agent <-->|"stdio MCP<br/>tools + resources"| mcp
+    desktop <-->|"IPC<br/>streaming events + tool calls"| backend
+    mcp <-->|"backend API"| backend
+    backend -->|"experiments<br/>sessions<br/>events"| db
+    backend -->|"camera/tool artifacts"| blobs
+    backend <-->|"agent stream<br/>tool loop"| openai
+    backend <-->|"JSON lines"| bridge
+    bridge -->|"dispatch"| core
     core -->|"resources/read"| pose
     core -->|"list_cameras<br/>view_camera"| camera
-    camera -->|"JPEG / PNG frame<br/>MCP image content"| server
+    camera -->|"JPEG / PNG frame"| core
     core -->|"connect_so101<br/>observe|get_arm_pose"| robot
     core -->|"get_position<br/>set_position"| ik
     ik -->|"IK joint target"| safety
@@ -94,7 +107,7 @@ flowchart LR
     classDef expert fill:#f7f7f7,stroke:#aaa,color:#333
     classDef hardware fill:#f4f1ff,stroke:#a99be8,color:#2f255f
     class agent,desktop agent
-    class server,pose,calib server
+    class mcp,backend,bridge,db,blobs,openai,pose,calib server
     class core core
     class safety safety
     class ik ik
@@ -107,7 +120,7 @@ flowchart LR
 ```mermaid
 flowchart TB
     client["MCP Client / Agent"]
-    server["chem-0 MCP Server"]
+    server["Shared Node Backend + MCP Surface"]
 
     discovery["Discovery<br/><code>list_serial_ports</code><br/><code>list_cameras</code>"]
     vision["Vision<br/><code>view_camera</code><br/>JPEG / PNG MCP image"]
@@ -117,6 +130,7 @@ flowchart TB
     cart_motion["Cartesian Motion<br/><code>get_position</code><br/><code>set_position</code><br/>position-only IK"]
     gripper["Gripper<br/><code>open_gripper</code><br/><code>close_gripper</code>"]
     expert_tool["Expert Placeholder<br/><code>ask_export(question)</code><br/>returns expert not available"]
+    experiments["Experiments<br/><code>create_experiment</code><br/><code>list_experiments</code><br/><code>list_agent_session_events</code><br/><code>list_experiment_artifacts</code>"]
 
     client -->|"stdio MCP"| server
     server --> discovery
@@ -127,13 +141,14 @@ flowchart TB
     server --> cart_motion
     server --> gripper
     server --> expert_tool
+    server --> experiments
 
     classDef client fill:#eef6ff,stroke:#8fbceb,color:#17324d
     classDef server fill:#f0f8f3,stroke:#92c8a0,color:#1f4d2d
     classDef affordance fill:#fffdf7,stroke:#d2bd7d,color:#3d3416
     class client client
     class server server
-    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool affordance
+    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool,experiments affordance
 ```
 
 ## Core MCP Tools
@@ -156,6 +171,10 @@ The server exposes tools for discovery, vision, robot state, and movement:
 - `ask_export`
 - `move_relative`
 - `disconnect`
+- `create_experiment`
+- `list_experiments`
+- `list_agent_session_events`
+- `list_experiment_artifacts`
 
 It also exposes the MCP resource:
 
@@ -253,7 +272,9 @@ python -m venv .venv
 Run the server:
 
 ```sh
-.venv/bin/python src/apps/mcp/server.py
+npm install
+npm run build
+node src/apps/mcp-node/dist/server.js
 ```
 
 Run the Electron console:
@@ -269,9 +290,9 @@ Mount it in Codex:
 {
   "mcpServers": {
     "chem-0": {
-      "command": "/Users/vibestartup/Code/lerobot-test/.venv/bin/python",
+      "command": "node",
       "args": [
-        "/Users/vibestartup/Code/lerobot-test/src/apps/mcp/server.py"
+        "/Users/vibestartup/Code/lerobot-test/src/apps/mcp-node/dist/server.js"
       ],
       "env": {}
     }
@@ -282,9 +303,10 @@ Mount it in Codex:
 Then ask the agent:
 
 ```text
-Use the chem-0 MCP. Read lerobot://pose-table, list cameras, view camera 0,
-probe the LeRobot servos, connect to the SO101 arm, observe the current pose,
-then use get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
+Use the chem-0 MCP. Create an experiment first, pass its experiment_id into
+tool calls, read lerobot://pose-table, list cameras, view camera 0, probe the
+LeRobot servos, connect to the SO101 arm, observe the current pose, then use
+get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
 for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 ```
 
@@ -292,6 +314,7 @@ for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 
 - [docs/setup.md](docs/setup.md): hardware and software setup
 - [docs/architecture.md](docs/architecture.md): reusable Mermaid architecture diagram
+- [docs/backend.md](docs/backend.md): shared backend data model and tracking behavior
 - [docs/desktop.md](docs/desktop.md): Electron app structure and local run commands
 - [docs/mcp-tools.md](docs/mcp-tools.md): full tool contracts and examples
 - [docs/pose-table.md](docs/pose-table.md): pose semantics and reference poses
@@ -313,7 +336,11 @@ Working and tested:
 - repo-local SO-101 URDF loading through `placo`
 - FK smoke test for `get_position`
 - incremental real movement through `set_arm_pose`
-- TypeScript Electron app scaffold that talks to MCP over stdio
+- TypeScript Node backend shared by MCP and Electron
+- local SQLite experiment/session/event persistence
+- local blob artifact persistence for camera/tool images
+- Electron app with experiment selection and GPT-5.5 streaming session UI
+- TypeScript MCP server that logs tool calls/responses when `experiment_id` is provided
 
 Known limitation:
 

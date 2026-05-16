@@ -1,12 +1,37 @@
 # Architecture
 
-This diagram is the reusable source for the README architecture overview.
+`chem-0` is now centered on one shared TypeScript Node backend. The stdio MCP
+server and the Electron GUI are clients of that backend; neither owns robot
+state, experiment state, persistence, or agent streaming independently.
+
+## Desiderata
+
+- One backend for both MCP and Electron, so tool semantics and safety checks do
+  not drift.
+- A durable experiment model where each experiment has agent sessions,
+  append-only `agent_session_events`, and artifact records.
+- Local-first persistence: `data/chem0.sqlite` plus `data/blobs` beside it.
+- MCP compatibility while accepting that MCP clients do not expose their full
+  chat transcript to the server. MCP tools therefore accept `experiment_id` so
+  tool calls and responses can still be attributed.
+- Electron-first agent sessions, where the Node backend can stream GPT-5.5
+  responses into the GUI and persist every message, tool call, tool response,
+  artifact, and error as an event.
+- A small Python boundary for the pieces that are already mature in Python:
+  LeRobot, Feetech, OpenCV, `placo`, and the repo-local URDF kinematics.
+
+## System Diagram
 
 ```mermaid
 flowchart LR
     agent["MCP Client / LLM Agent<br/>Codex, Claude, Gemini, etc."]
     desktop["Electron Console<br/><code>src/apps/electron</code>"]
-    server["chem-0 stdio MCP Server<br/><code>src/apps/mcp/server.py</code>"]
+    mcp["Node stdio MCP Server<br/><code>src/apps/mcp-node</code>"]
+    backend["Shared Node Backend<br/><code>@chem0/backend</code>"]
+    db["SQLite Experiment Store<br/><code>data/chem0.sqlite</code>"]
+    blobs["Blob Store<br/><code>data/blobs</code>"]
+    openai["OpenAI Responses API<br/><code>gpt-5.5</code>"]
+    bridge["Python Bridge<br/><code>src/apps/python-bridge</code>"]
     core["Python Core<br/><code>src/lib/chem0</code>"]
     pose["Pose Table Resource<br/><code>lerobot://pose-table</code>"]
     ik["SO-101 FK / IK<br/><code>placo</code> + URDF"]
@@ -17,12 +42,16 @@ flowchart LR
     bus["Feetech STS3215 Servo Bus<br/>IDs 1-6 at 1 Mbps"]
     calib["Saved Calibration<br/><code>mcp_so101.json</code>"]
 
-    agent <-->|"stdio MCP<br/>tools + resources"| server
-    desktop <-->|"stdio MCP<br/>same tools"| server
-    server -->|"dispatch"| core
+    agent <-->|"stdio MCP<br/>tools + resources"| mcp
+    desktop <-->|"IPC<br/>streaming events + tool calls"| backend
+    mcp <-->|"backend API"| backend
+    backend -->|"experiments<br/>sessions<br/>events"| db
+    backend -->|"camera/tool artifacts"| blobs
+    backend <-->|"agent stream<br/>tool loop"| openai
+    backend <-->|"JSON lines"| bridge
+    bridge -->|"dispatch"| core
     core -->|"resources/read"| pose
     core -->|"list_cameras<br/>view_camera"| camera
-    camera -->|"JPEG / PNG frame<br/>MCP image content"| server
     core -->|"connect_so101<br/>observe|get_arm_pose"| robot
     core -->|"get_position<br/>set_position"| ik
     ik -->|"IK joint target"| safety
@@ -40,7 +69,7 @@ flowchart LR
     classDef expert fill:#f7f7f7,stroke:#aaa,color:#333
     classDef hardware fill:#f4f1ff,stroke:#a99be8,color:#2f255f
     class agent,desktop agent
-    class server,pose,calib server
+    class mcp,backend,bridge,db,blobs,openai,pose,calib server
     class core core
     class safety safety
     class ik ik
@@ -50,13 +79,10 @@ flowchart LR
 
 ## MCP Affordance Map
 
-This map enumerates every current MCP tool and resource by what it lets an
-agent do.
-
 ```mermaid
 flowchart TB
     client["MCP Client / Agent"]
-    server["chem-0 MCP Server"]
+    server["Shared Node Backend + MCP Surface"]
 
     discovery["Discovery<br/><code>list_serial_ports</code><br/><code>list_cameras</code>"]
     vision["Vision<br/><code>view_camera</code><br/>JPEG / PNG MCP image"]
@@ -66,6 +92,7 @@ flowchart TB
     cart_motion["Cartesian Motion<br/><code>get_position</code><br/><code>set_position</code><br/>position-only IK"]
     gripper["Gripper<br/><code>open_gripper</code><br/><code>close_gripper</code>"]
     expert_tool["Expert Placeholder<br/><code>ask_export(question)</code><br/>returns expert not available"]
+    experiments["Experiments<br/><code>create_experiment</code><br/><code>list_experiments</code><br/><code>list_agent_session_events</code><br/><code>list_experiment_artifacts</code>"]
 
     client -->|"stdio MCP"| server
     server --> discovery
@@ -76,25 +103,29 @@ flowchart TB
     server --> cart_motion
     server --> gripper
     server --> expert_tool
+    server --> experiments
 
     classDef client fill:#eef6ff,stroke:#8fbceb,color:#17324d
     classDef server fill:#f0f8f3,stroke:#92c8a0,color:#1f4d2d
     classDef affordance fill:#fffdf7,stroke:#d2bd7d,color:#3d3416
     class client client
     class server server
-    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool affordance
+    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool,experiments affordance
 ```
 
 ## Data Flow
 
-1. A client starts `src/apps/mcp/server.py` over stdio.
-2. Codex/Claude/Gemini or the Electron console talks to the same MCP surface.
-3. The client reads `lerobot://pose-table` for calibrated limits and reference poses.
-4. The client calls `view_camera` to get visual context as an MCP image.
-5. The client calls `probe_feetech`, `connect_so101`, and `observe`.
-6. The client calls `get_arm_pose`/`set_arm_pose` for joint-space motion or
-   `get_position`/`set_position` for Cartesian IK.
-7. The client may call `ask_export(question)` when it needs external expertise;
-   the current placeholder returns `expert not available`.
-8. The Python core validates the target and interpolates the move in small steps.
-9. The server disconnects from the robot when the session is complete.
+1. Electron starts `@chem0/backend` in the Electron main process, or an MCP
+   client starts `src/apps/mcp-node/dist/server.js` over stdio.
+2. The Node backend initializes `data/chem0.sqlite`, `data/blobs`, and the
+   persistent Python bridge process.
+3. Electron-created sessions stream GPT-5.5 responses and backend tool-loop
+   events into the GUI while appending each event to SQLite.
+4. MCP-created tool calls pass through the same backend. When a call includes
+   `experiment_id`, the backend logs `tool_call` and `tool_response` events.
+5. Hardware calls are forwarded to the Python bridge, which dispatches to
+   `src/lib/chem0/core.py`.
+6. Image responses from tools such as `view_camera` are copied into the blob
+   store and referenced from `experiment_artifacts`.
+7. Joint-space and Cartesian movement still route through calibrated validation
+   and step interpolation before any hardware action is sent.

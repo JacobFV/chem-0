@@ -16,7 +16,8 @@ body {
 
 button,
 select,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
@@ -27,6 +28,7 @@ button {
   border-radius: 6px;
   padding: 8px 12px;
   cursor: pointer;
+  min-height: 36px;
 }
 
 button:hover {
@@ -38,14 +40,30 @@ button:hover {
   background: #000000;
 }
 
-.topbar {
+.topbar,
+.experiment-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 18px 24px;
+  gap: 18px;
+  padding: 16px 22px;
   border-bottom: 1px solid #1a1a1a;
   background: #000000;
+}
+
+.experiment-bar {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.experiment-bar label {
+  margin: 0;
+  min-width: 220px;
+}
+
+#active-experiment {
+  color: #888888;
+  font-size: 13px;
 }
 
 h1,
@@ -83,7 +101,7 @@ h2 {
   gap: 16px;
   padding: 16px;
   background: #000000;
-  min-height: calc(100vh - 80px);
+  min-height: calc(100vh - 140px);
 }
 
 .left-column,
@@ -121,42 +139,19 @@ h2 {
 }
 
 .small-panel {
-  flex: 0 0 120px;
+  flex: 0 0 140px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.small-container {
-  height: 100%;
+.small-panel h2 {
+  margin-top: 0;
+  font-size: 12px;
 }
 
 .cameras-panel {
   flex: 0 0 auto;
-}
-
-.reasoning-panel {
-  flex: 1 1 auto;
-}
-
-label {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 10px;
-  color: #888888;
-}
-
-select,
-textarea {
-  width: 100%;
-  border: 1px solid #222222;
-  border-radius: 6px;
-  padding: 8px;
-  background: #000000;
-  color: #ededed;
-}
-
-textarea {
-  min-height: 150px;
-  resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 .cameras-panel h2 {
@@ -200,27 +195,114 @@ textarea {
   display: block;
 }
 
-.reasoning-panel {
+.chat-panel {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-.reasoning-panel h2 {
+.chat-panel h2 {
   margin-top: 0;
+}
+
+.chat-log {
+  flex: 1;
+  min-height: 200px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.chat-item {
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  padding: 10px;
+  background: #0a0a0a;
+}
+
+.chat-item.user {
+  background: #0e1614;
+  border-color: #1d2a26;
+}
+
+.chat-item.assistant {
+  background: #14110a;
+  border-color: #2a2418;
+}
+
+.chat-item.tool {
+  background: #0c1116;
+  border-color: #1a232c;
+}
+
+.chat-item.error {
+  background: #1a0c0c;
+  border-color: #3a1a1a;
+}
+
+.chat-role {
+  margin-bottom: 6px;
+  color: #888888;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.chat-body {
+  white-space: pre-wrap;
+  line-height: 1.45;
+  color: #ededed;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.composer textarea {
+  min-height: 72px;
+  font-family: inherit;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  color: #888888;
+}
+
+select,
+textarea,
+input {
+  width: 100%;
+  border: 1px solid #222222;
+  border-radius: 6px;
+  padding: 8px;
+  background: #000000;
+  color: #ededed;
+}
+
+textarea {
+  min-height: 130px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 pre {
   flex: 1;
   margin: 0;
   overflow: auto;
-  padding: 12px;
+  padding: 10px;
   border-radius: 6px;
   background: #000000;
   color: #ededed;
   border: 1px solid #1a1a1a;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
 }

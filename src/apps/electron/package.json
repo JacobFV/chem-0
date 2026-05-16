@@ -11,6 +11,9 @@
   "electronmon": {
     "patterns": ["dist/**/*"]
   },
+  "dependencies": {
+    "@chem0/backend": "0.1.0"
+  },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "chokidar-cli": "^3.0.0",

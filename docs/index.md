@@ -1,6 +1,7 @@
 # Documentation Index
 
 - [Setup](setup.md)
+- [Architecture](architecture.md)
 - [MCP Tools](mcp-tools.md)
 - [Pose Table](pose-table.md)
 - [Operations](operations.md)

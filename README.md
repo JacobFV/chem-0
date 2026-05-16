@@ -52,18 +52,35 @@ assets/                   Welcome image and future visual assets
 
 ## System Diagram
 
-```text
-MCP Client / LLM Agent
-        |
-        | stdio MCP
-        v
-chem-0 MCP Server
-        |
-        +-- OpenCV camera frame -> MCP image content
-        |
-        +-- LeRobot SO-101 follower arm
-              |
-              +-- Feetech STS3215 servo bus
+```mermaid
+flowchart LR
+    agent["MCP Client / LLM Agent<br/>Codex, Claude, Gemini, etc."]
+    server["chem-0 stdio MCP Server<br/><code>lerobot_mcp_server.py</code>"]
+    pose["Pose Table Resource<br/><code>lerobot://pose-table</code>"]
+    safety["Pose Validation + Step Interpolation<br/>calibrated limits, max_step"]
+    camera["OpenCV Camera<br/>camera_id 0"]
+    robot["LeRobot SO-101/SO-100<br/>follower arm"]
+    bus["Feetech STS3215 Servo Bus<br/>IDs 1-6 at 1 Mbps"]
+    calib["Saved Calibration<br/><code>mcp_so101.json</code>"]
+
+    agent <-->|"stdio MCP<br/>tools + resources"| server
+    server -->|"resources/read"| pose
+    server -->|"list_cameras<br/>view_camera"| camera
+    camera -->|"JPEG / PNG frame<br/>MCP image content"| server
+    server -->|"connect_so101<br/>observe"| robot
+    server -->|"move_pose"| safety
+    safety -->|"validated absolute pose"| robot
+    calib -->|"joint limits + homing"| server
+    robot <-->|"serial commands"| bus
+
+    classDef agent fill:#eef6ff,stroke:#8fbceb,color:#17324d
+    classDef server fill:#f0f8f3,stroke:#92c8a0,color:#1f4d2d
+    classDef safety fill:#fff7ec,stroke:#e0ad6e,color:#5d3d16
+    classDef hardware fill:#f4f1ff,stroke:#a99be8,color:#2f255f
+    class agent agent
+    class server,pose,calib server
+    class safety safety
+    class camera,robot,bus hardware
 ```
 
 ## Core MCP Tools
@@ -183,6 +200,7 @@ then only use move_pose with max_step <= 5 and poses inside calibrated limits.
 ## Documentation
 
 - [docs/setup.md](docs/setup.md): hardware and software setup
+- [docs/architecture.md](docs/architecture.md): reusable Mermaid architecture diagram
 - [docs/mcp-tools.md](docs/mcp-tools.md): full tool contracts and examples
 - [docs/pose-table.md](docs/pose-table.md): pose semantics and reference poses
 - [docs/operations.md](docs/operations.md): safe operating workflow

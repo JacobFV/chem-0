@@ -1,13 +1,14 @@
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import OpenAI from "openai";
 import { AudioService } from "./audio";
 import { PythonBridge } from "./pythonBridge";
 import { Chem0Store } from "./store";
 import type { Experiment, JsonObject } from "./types";
 
-const DEFAULT_MODEL = "gpt-4o";
+const DEFAULT_MODEL = "gpt-5.5";
 const MAX_AGENT_STEPS = 8;
 
 export class Chem0Backend extends EventEmitter {
@@ -18,10 +19,17 @@ export class Chem0Backend extends EventEmitter {
 
   constructor(readonly repoRoot: string, dataDir = path.join(repoRoot, "data")) {
     super();
+    this.loadEnv();
     this.store = new Chem0Store(repoRoot, dataDir);
     this.audio = new AudioService(dataDir);
     this.bridge = new PythonBridge(repoRoot);
     this.bridge.on("stderr", (text) => this.emit("stderr", text));
+  }
+
+  private loadEnv(): void {
+    const envPath = path.join(this.repoRoot, ".env");
+    if (!fs.existsSync(envPath) || typeof process.loadEnvFile !== "function") return;
+    process.loadEnvFile(envPath);
   }
 
   async init(): Promise<void> {
@@ -66,6 +74,12 @@ export class Chem0Backend extends EventEmitter {
       const timestamp = Date.now();
       this.store.appendEvent({
         experimentId: experimentIdArg,
+        type: "tool_call",
+        name,
+        content: { arguments: { value, note } }
+      });
+      this.store.appendEvent({
+        experimentId: experimentIdArg,
         type: "ph_sample",
         role: "system",
         content: { value, note, timestamp }
@@ -77,7 +91,9 @@ export class Chem0Backend extends EventEmitter {
         note,
         timestamp
       });
-      return { ok: true, value, timestamp };
+      const result = { ok: true, value, note, timestamp };
+      this.store.appendEvent({ experimentId: experimentIdArg, type: "tool_response", name, content: result });
+      return result;
     }
 
     const experimentId = typeof args.experiment_id === "string" ? args.experiment_id : undefined;
@@ -352,9 +368,10 @@ export class Chem0Backend extends EventEmitter {
           type: "object",
           properties: {
             value: { type: "number" },
-            note: { type: "string" }
+            note: { type: "string" },
+            experiment_id: { type: "string" }
           },
-          required: ["value"],
+          required: ["value", "experiment_id"],
           additionalProperties: false
         }
       },
@@ -366,9 +383,12 @@ export class Chem0Backend extends EventEmitter {
           type: "object",
           properties: {
             text: { type: "string", description: "The exact message to speak aloud." },
-            provider: { type: "string", enum: ["elevenlabs", "system"], default: "elevenlabs" },
+            provider: { type: "string", enum: ["openai", "elevenlabs", "system"], default: "openai" },
+            voice: { type: "string", description: "Optional OpenAI TTS voice." },
             voice_id: { type: "string", description: "Optional ElevenLabs voice id." },
-            model_id: { type: "string", description: "Optional ElevenLabs model id." },
+            model_id: { type: "string", description: "Optional provider model id." },
+            instructions: { type: "string", description: "Optional OpenAI TTS style instructions." },
+            response_format: { type: "string", enum: ["mp3", "opus", "aac", "flac", "wav", "pcm"], default: "mp3" },
             play: { type: "boolean", default: true },
             experiment_id: { type: "string" }
           },

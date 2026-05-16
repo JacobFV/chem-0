@@ -38,8 +38,8 @@ make robot control more inspectable:
 - Camera frames are available through the same MCP channel as motion commands.
 - Experiments are persisted to local SQLite, with camera frames stored as local
   blob artifacts beside the database.
-- The agent can talk to nearby humans through optional ElevenLabs TTS and
-  OpenAI audio transcription.
+- The agent can talk to nearby humans through OpenAI TTS/STT, with optional
+  ElevenLabs TTS.
 
 That makes the system useful for studying agentic control, safety boundaries,
 visual feedback, and the gap between language-model spatial reasoning and real
@@ -178,6 +178,7 @@ The server exposes tools for discovery, vision, robot state, and movement:
 - `ask_export`
 - `speak_to_human`
 - `listen_to_human`
+- `record_ph`
 - `move_relative`
 - `disconnect`
 - `create_experiment`
@@ -323,13 +324,15 @@ Optional voice environment:
 
 ```sh
 export OPENAI_API_KEY=...
-export ELEVENLABS_API_KEY=...
-export ELEVENLABS_VOICE_ID=...
+export ELEVENLABS_API_KEY=... # optional
+export ELEVENLABS_VOICE_ID=... # optional
 ```
 
-`speak_to_human` uses ElevenLabs when configured, or `provider: "system"` for
-macOS system speech. `listen_to_human` transcribes Electron-recorded mic clips
-or an MCP-provided local `audio_path`.
+`speak_to_human` uses OpenAI TTS by default. It can use ElevenLabs with
+`provider: "elevenlabs"`, and falls back to OpenAI when ElevenLabs is not
+configured. `provider: "system"` uses macOS system speech. `listen_to_human`
+transcribes Electron-recorded mic clips or an MCP-provided local `audio_path`.
+The shared backend also loads a repo-root `.env` file automatically.
 
 ## Documentation
 
@@ -362,6 +365,7 @@ Working and tested:
 - local blob artifact persistence for camera/tool images
 - Electron app with experiment selection and GPT-5.5 streaming session UI
 - optional `speak_to_human` and `listen_to_human` voice tools
+- `record_ph` pH samples for live experiment charts
 - Electron microphone recording routed through the shared backend STT tool
 - TypeScript MCP server that logs tool calls/responses when `experiment_id` is provided
 
@@ -370,8 +374,8 @@ Known limitation:
 - The Feetech bus can intermittently drop a status packet immediately after
   motion. The server retries observations, but operators should still keep
   motions small and visually monitored.
-- ElevenLabs TTS, OpenAI transcription, and GPT-5.5 sessions require their
-  respective API keys in the process environment.
+- OpenAI TTS/STT and GPT-5.5 sessions require `OPENAI_API_KEY`; ElevenLabs TTS
+  requires `ELEVENLABS_API_KEY` only when explicitly selected.
 
 ## Repository
 

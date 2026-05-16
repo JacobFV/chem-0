@@ -338,7 +338,7 @@ async function sendToAgent(raw: string): Promise<void> {
   const payload: JsonObject = {
     experiment_id: experimentId,
     message,
-    model: "gpt-4o"
+    model: "gpt-5.5"
   };
   if (sessionId) payload.session_id = sessionId;
   await window.chem0.sendAgentMessage(payload);

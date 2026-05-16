@@ -315,6 +315,22 @@ expert not available
 }
 ```
 
+## Experiment Measurements
+
+### `record_ph`
+
+Records a pH sample for the current experiment. The Electron app can use
+`ph_sample` events to update a real-time chart while preserving the value in
+`agent_session_events`.
+
+```json
+{
+  "value": 7.9,
+  "note": "Estimated from universal indicator color.",
+  "experiment_id": "exp_..."
+}
+```
+
 ## Human Voice
 
 ### `speak_to_human`
@@ -322,7 +338,20 @@ expert not available
 Speaks a short message to the nearby human and records the audio as an artifact
 when `experiment_id` is provided.
 
-ElevenLabs mode requires `ELEVENLABS_API_KEY`:
+OpenAI TTS is the default and requires `OPENAI_API_KEY`:
+
+```json
+{
+  "text": "Please confirm the beaker is clear before I move the arm.",
+  "provider": "openai",
+  "voice": "coral",
+  "play": true,
+  "experiment_id": "exp_..."
+}
+```
+
+ElevenLabs mode is optional and requires `ELEVENLABS_API_KEY`. If ElevenLabs is
+requested without that key, the backend falls back to OpenAI TTS when available:
 
 ```json
 {

@@ -47,13 +47,14 @@ node src/apps/mcp-node/dist/server.js
 
 ```sh
 export OPENAI_API_KEY=...
-export ELEVENLABS_API_KEY=...
-export ELEVENLABS_VOICE_ID=...
+export ELEVENLABS_API_KEY=... # optional
+export ELEVENLABS_VOICE_ID=... # optional
 ```
 
 `OPENAI_API_KEY` is required for GPT-5.5 sessions and `listen_to_human`.
-`ELEVENLABS_API_KEY` is optional; `speak_to_human` can use `provider: "system"`
-on macOS without it.
+`speak_to_human` uses OpenAI TTS by default. `ELEVENLABS_API_KEY` is optional
+and only needed for `provider: "elevenlabs"`; `provider: "system"` uses macOS
+speech without an API.
 
 ## Codex MCP Config
 

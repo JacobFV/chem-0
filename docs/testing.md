@@ -55,9 +55,10 @@ create_experiment
 list_experiments
 list_agent_session_events
 list_experiment_artifacts
+record_ph
 ```
 
-Current expected tool count: `22`.
+Current expected tool count: `23`.
 
 Expected resource:
 
@@ -72,23 +73,39 @@ Experiment logging smoke path:
 3. Call `list_agent_session_events`.
 4. Expected event types include `message`, `tool_call`, and `tool_response`.
 
-Voice smoke path without external credentials:
+pH sample smoke path:
+
+```json
+{
+  "name": "record_ph",
+  "arguments": {
+    "value": 7.9,
+    "note": "Smoke test",
+    "experiment_id": "exp_..."
+  }
+}
+```
+
+Expected event types include `ph_sample`, plus the surrounding `tool_call` and
+`tool_response`.
+
+Voice smoke path with OpenAI TTS:
 
 ```json
 {
   "name": "speak_to_human",
   "arguments": {
     "text": "Smoke test only",
-    "provider": "elevenlabs",
+    "provider": "openai",
     "play": false,
     "experiment_id": "exp_..."
   }
 }
 ```
 
-With no `ELEVENLABS_API_KEY`, the expected response has `configured: false` and
-still logs the tool call/response. On macOS, use `provider: "system"` for a real
-local playback smoke test without ElevenLabs.
+Expected response has `provider: "openai"`, `configured: true`, and an audio
+artifact when `OPENAI_API_KEY` is configured. On macOS, use `provider: "system"`
+for a local playback smoke test without API calls.
 
 ## Camera Test
 

@@ -107,10 +107,14 @@ For Electron-hosted agent sessions and MCP voice tools:
 
 ```sh
 export OPENAI_API_KEY=...
-export ELEVENLABS_API_KEY=...
-export ELEVENLABS_VOICE_ID=...
+export ELEVENLABS_API_KEY=... # optional
+export ELEVENLABS_VOICE_ID=... # optional
 ```
 
+The shared backend also loads a repo-root `.env` file automatically when
+running on Node versions that support `process.loadEnvFile`.
+
 `OPENAI_API_KEY` is required for GPT-5.5 sessions and `listen_to_human`.
-`ELEVENLABS_API_KEY` is optional; without it, `speak_to_human` can still use
-`provider: "system"` on macOS.
+It is also used by default for `speak_to_human` through OpenAI TTS.
+`ELEVENLABS_API_KEY` is optional and only needed for `provider: "elevenlabs"`;
+without it, ElevenLabs requests fall back to OpenAI TTS when available.

@@ -29,12 +29,12 @@ const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
 const recordAudio = document.querySelector<HTMLButtonElement>("#record-audio")!;
 const stopAudio = document.querySelector<HTMLButtonElement>("#stop-audio")!;
 const phCanvas = document.querySelector<HTMLCanvasElement>("#ph-canvas");
-const camFrames: (HTMLImageElement | null)[] = [
-  document.querySelector<HTMLImageElement>("#cam-0"),
-  document.querySelector<HTMLImageElement>("#cam-1"),
-  document.querySelector<HTMLImageElement>("#cam-2"),
+const camVideos: (HTMLVideoElement | null)[] = [
+  document.querySelector<HTMLVideoElement>("#cam-0"),
+  document.querySelector<HTMLVideoElement>("#cam-1"),
+  document.querySelector<HTMLVideoElement>("#cam-2"),
 ];
-const availableCameraIds = new Set<number>();
+const camStreams: (MediaStream | null)[] = [null, null, null];
 
 let experimentId = "";
 let sessionId = "";
@@ -230,62 +230,76 @@ async function call(name: string, args: JsonObject = {}): Promise<JsonObject> {
   return result;
 }
 
-async function refreshCamera(id: number): Promise<void> {
-  if (!availableCameraIds.has(id)) return;
-  const target = camFrames[id];
-  if (!target) return;
-  try {
-    const result = await window.chem0.callTool("view_camera", {
-      camera_id: id,
-      width: 640,
-      height: 360,
-      format: "jpeg",
-      quality: 80,
-    });
-    const content = (result.content ?? []) as Array<{ type: string; data?: string; mimeType?: string }>;
-    const image = content.find((item) => item.type === "image");
-    if (image?.data && image.mimeType) target.src = `data:${image.mimeType};base64,${image.data}`;
-  } catch {
-    // camera became unavailable; remove from poll set so we don't keep failing
-    availableCameraIds.delete(id);
-    updateCameraVisibility();
-  }
-}
-
-function updateCameraVisibility(): void {
-  for (let i = 0; i < camFrames.length; i++) {
-    const cell = camFrames[i]?.closest(".camera-cell") as HTMLElement | null;
+function updateCameraVisibility(activeIds: Set<number>): void {
+  for (let i = 0; i < camVideos.length; i++) {
+    const cell = camVideos[i]?.closest(".camera-cell") as HTMLElement | null;
     if (!cell) continue;
-    cell.classList.toggle("hidden", !availableCameraIds.has(i));
+    cell.classList.toggle("hidden", !activeIds.has(i));
   }
 }
 
-async function discoverCameras(): Promise<void> {
+function setCameraLabel(slot: number, label: string): void {
+  const cell = camVideos[slot]?.closest(".camera-cell") as HTMLElement | null;
+  const labelEl = cell?.querySelector(".camera-label") as HTMLElement | null;
+  if (labelEl) labelEl.textContent = label;
+}
+
+function isLikelyContinuityCamera(label: string): boolean {
+  const lower = label.toLowerCase();
+  return lower.includes("iphone") || lower.includes("ipad") || lower.includes("continuity");
+}
+
+async function initBrowserCameras(): Promise<void> {
+  const active = new Set<number>();
   try {
-    const result = await window.chem0.callTool("list_cameras", { max_id: camFrames.length - 1 });
-    const content = (result.content ?? []) as Array<{ type: string; text?: string }>;
-    const textBlock = content.find((c) => c.type === "text");
-    availableCameraIds.clear();
-    if (textBlock?.text) {
-      const parsed = JSON.parse(textBlock.text) as { cameras?: Array<{ camera_id?: number }> };
-      for (const cam of parsed.cameras ?? []) {
-        if (typeof cam.camera_id === "number" && cam.camera_id < camFrames.length) {
-          availableCameraIds.add(cam.camera_id);
-        }
+    // Trigger permission once so device labels populate
+    const probeStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    for (const track of probeStream.getTracks()) track.stop();
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices
+      .filter((d) => d.kind === "videoinput")
+      .filter((d) => !isLikelyContinuityCamera(d.label));
+
+    for (let i = 0; i < camVideos.length; i++) {
+      const video = camVideos[i];
+      const device = videoDevices[i];
+      if (!video || !device) continue;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: device.deviceId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
+          }
+        });
+        video.srcObject = stream;
+        camStreams[i] = stream;
+        setCameraLabel(i, device.label ? device.label.slice(0, 28) : `cam ${i}`);
+        active.add(i);
+      } catch (error) {
+        console.error(`Failed to open camera slot ${i}`, error);
       }
     }
-  } catch {
-    availableCameraIds.clear();
+  } catch (error) {
+    console.error("Camera permission denied or unavailable", error);
   }
-  updateCameraVisibility();
+  updateCameraVisibility(active);
 }
+
+window.addEventListener("beforeunload", () => {
+  for (const stream of camStreams) {
+    if (!stream) continue;
+    for (const track of stream.getTracks()) track.stop();
+  }
+});
 
 async function boot(): Promise<void> {
   const [tools] = await Promise.all([window.chem0.listTools(), refreshExperiments()]);
   show(tools);
   await loadEvents();
-  await discoverCameras();
-  void Promise.all(Array.from(availableCameraIds).map(refreshCamera));
+  void initBrowserCameras();
 }
 
 document.querySelector("#create-experiment")?.addEventListener("click", async () => {
@@ -397,12 +411,6 @@ window.chem0.onAgentEvent((event) => {
   }
   if (event.type === "error") appendChat("error", String(event.message ?? ""));
 });
-
-setInterval(() => {
-  if (document.visibilityState !== "visible") return;
-  if (availableCameraIds.size === 0) return;
-  void Promise.all(Array.from(availableCameraIds).map(refreshCamera));
-}, 3000);
 
 window.addEventListener("resize", () => drawPhChart());
 

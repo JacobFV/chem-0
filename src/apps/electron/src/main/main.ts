@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, session } from "electron";
 import path from "node:path";
 import { Chem0Backend, type JsonObject } from "@chem0/backend";
 
@@ -82,6 +82,9 @@ app.whenReady().then(async () => {
   });
   backend.on("stderr", (text) => console.error(`[chem-0 python] ${text}`));
   backend.on("agent-event", sendAgentEvent);
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === "media");
+  });
   await backend.init();
   createWindow();
 });

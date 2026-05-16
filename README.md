@@ -20,6 +20,8 @@ Example MCP client command configuration:
 ## Tools
 
 - `list_serial_ports`: lists likely serial devices.
+- `list_cameras`: probes local OpenCV camera indices.
+- `view_camera`: captures one frame and returns it as an MCP image.
 - `probe_feetech`: scans a port for STS3215 servo IDs without moving motors.
 - `connect_so101`: connects to an SO-101/SO-100 follower arm.
 - `observe`: reads current joint positions.
@@ -65,3 +67,28 @@ It contains calibrated joint limits, sign notes, and common reference poses.
 The first five values are degrees in LeRobot's normalized joint space. `gripper`
 is `0..100`. The server rejects out-of-range poses by default and interpolates
 absolute pose moves using small steps.
+
+## Camera Tools
+
+`list_cameras` probes numeric OpenCV camera indices:
+
+```json
+{
+  "max_id": 5
+}
+```
+
+`view_camera` captures a single frame and returns an MCP `image` content block:
+
+```json
+{
+  "camera_id": 0,
+  "width": 1280,
+  "height": 720,
+  "format": "jpeg",
+  "quality": 85
+}
+```
+
+On macOS, the first call may require granting camera permission to the terminal
+or MCP host process.

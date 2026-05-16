@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import glob
 import json
+import base64
 import sys
 import time
 import traceback
@@ -153,6 +154,62 @@ def _tool_error(message: str) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": message}], "isError": True}
 
 
+def _tool_image(data: bytes, mime_type: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "content": [
+            {"type": "text", "text": json.dumps(metadata, indent=2, sort_keys=True)},
+            {"type": "image", "data": base64.b64encode(data).decode("ascii"), "mimeType": mime_type},
+        ],
+        "isError": False,
+    }
+
+
+def _camera_backend() -> int:
+    import cv2
+
+    if sys.platform == "darwin" and hasattr(cv2, "CAP_AVFOUNDATION"):
+        return cv2.CAP_AVFOUNDATION
+    return cv2.CAP_ANY
+
+
+def _open_camera(camera_id: int, width: int | None = None, height: int | None = None) -> Any:
+    import cv2
+
+    cap = cv2.VideoCapture(camera_id, _camera_backend())
+    if width is not None:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
+    if height is not None:
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
+    return cap
+
+
+def _capture_frame(camera_id: int, width: int | None = None, height: int | None = None) -> tuple[Any, dict[str, Any]]:
+    import cv2
+
+    cap = _open_camera(camera_id, width, height)
+    try:
+        if not cap.isOpened():
+            raise RuntimeError(f"Camera {camera_id} could not be opened.")
+
+        frame = None
+        ok = False
+        for _ in range(5):
+            ok, frame = cap.read()
+            if ok and frame is not None:
+                break
+            time.sleep(0.1)
+
+        if not ok or frame is None:
+            raise RuntimeError(f"Camera {camera_id} opened but did not return a frame.")
+
+        actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        return frame, {"camera_id": camera_id, "width": actual_width, "height": actual_height, "fps": fps}
+    finally:
+        cap.release()
+
+
 def pose_table_payload() -> dict[str, Any]:
     return {
         "robot_id": DEFAULT_ROBOT_ID,
@@ -269,6 +326,54 @@ TOOLS: list[dict[str, Any]] = [
         "name": "list_serial_ports",
         "description": "List likely serial ports for a LeRobot bus servo adapter.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "list_cameras",
+        "description": "Probe local OpenCV camera indices and return cameras that can provide a frame.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "max_id": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20,
+                    "default": 5,
+                    "description": "Highest numeric camera index to probe, inclusive.",
+                }
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "view_camera",
+        "description": "Capture one camera frame and return it as an MCP image content block.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "camera_id": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "OpenCV camera index to capture from.",
+                },
+                "width": {"type": "integer", "minimum": 1, "maximum": 4096},
+                "height": {"type": "integer", "minimum": 1, "maximum": 4096},
+                "format": {
+                    "type": "string",
+                    "enum": ["jpeg", "png"],
+                    "default": "jpeg",
+                    "description": "Encoded image format returned in the MCP image content.",
+                },
+                "quality": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 85,
+                    "description": "JPEG quality; ignored for PNG.",
+                },
+            },
+            "additionalProperties": False,
+        },
     },
     {
         "name": "probe_feetech",
@@ -403,6 +508,45 @@ def list_serial_ports(_: dict[str, Any]) -> dict[str, Any]:
     ports = sorted(set(glob.glob("/dev/cu.*") + glob.glob("/dev/tty.*")))
     likely = [p for p in ports if any(s in p.lower() for s in ("usb", "wch", "serial", "modem"))]
     return _tool_json({"likely": likely, "all": ports})
+
+
+def list_cameras(args: dict[str, Any]) -> dict[str, Any]:
+    max_id = int(args.get("max_id", 5))
+    cameras = []
+    errors = {}
+
+    for camera_id in range(max_id + 1):
+        try:
+            _, metadata = _capture_frame(camera_id)
+            cameras.append(metadata)
+        except Exception as exc:
+            errors[str(camera_id)] = str(exc)
+
+    return _tool_json({"cameras": cameras, "errors": errors})
+
+
+def view_camera(args: dict[str, Any]) -> dict[str, Any]:
+    import cv2
+
+    camera_id = int(args.get("camera_id", 0))
+    width = int(args["width"]) if "width" in args else None
+    height = int(args["height"]) if "height" in args else None
+    image_format = args.get("format", "jpeg")
+    quality = int(args.get("quality", 85))
+
+    frame, metadata = _capture_frame(camera_id, width, height)
+    if image_format == "png":
+        ok, encoded = cv2.imencode(".png", frame)
+        mime_type = "image/png"
+    else:
+        ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+        mime_type = "image/jpeg"
+
+    if not ok:
+        return _tool_error(f"Failed to encode camera {camera_id} frame as {image_format}.")
+
+    metadata = {**metadata, "format": image_format, "mime_type": mime_type}
+    return _tool_image(encoded.tobytes(), mime_type, metadata)
 
 
 def probe_feetech(args: dict[str, Any]) -> dict[str, Any]:
@@ -552,6 +696,8 @@ def disconnect(_: dict[str, Any]) -> dict[str, Any]:
 
 HANDLERS = {
     "list_serial_ports": list_serial_ports,
+    "list_cameras": list_cameras,
+    "view_camera": view_camera,
     "probe_feetech": probe_feetech,
     "connect_so101": connect_so101,
     "observe": observe,

@@ -1,77 +1,148 @@
-# chem-0 LeRobot MCP Server
+# chem-0
 
-`chem-0` is a compact stdio MCP server for controlling a Hugging Face LeRobot
-SO-101/SO-100 follower arm and reading a local camera. It is intended for Codex
-or another MCP-capable LLM client to:
+![chem-0 robot arm welcome image](assets/welcome-image.svg)
 
-- inspect camera frames,
-- probe and connect to the arm,
-- read the current six-joint pose,
-- move the arm to an absolute six-parameter pose,
-- use a built-in pose table as spatial/calibration context.
+## A small research project in embodied laboratory automation
 
-The implementation is intentionally a single Python file:
+`chem-0` explores a practical question:
 
-- `lerobot_mcp_server.py`
+> Can a language-model agent safely operate a low-cost robot arm while using a
+> live camera feed as its visual feedback loop?
 
-## Local Machine State
+This repository contains a compact stdio MCP server that lets an MCP-capable
+agent, such as Codex, connect to a Hugging Face LeRobot SO-101/SO-100 follower
+arm, inspect camera frames, read calibrated joint poses, and command the arm
+through a six-parameter pose interface.
 
-This repo was built and tested on macOS from:
+The project is intentionally small enough to understand at a science-fair table:
+
+1. The robot arm is calibrated into a known coordinate space.
+2. The camera returns a frame to the agent.
+3. The agent receives a table of safe reference poses.
+4. The agent chooses a target pose.
+5. The MCP server validates the pose and moves the arm in small steps.
+
+## Why This Matters
+
+Many lab automation demos assume expensive industrial hardware, custom GUIs, or
+hard-coded scripts. `chem-0` asks whether a simple open-source interface can
+make robot control more inspectable:
+
+- Every command is a named MCP tool call.
+- Every full-arm movement is a six-number pose.
+- Every pose is checked against calibrated limits.
+- Every agent can read the same pose table before moving.
+- Camera frames are available through the same MCP channel as motion commands.
+
+That makes the system useful for studying agentic control, safety boundaries,
+visual feedback, and the gap between language-model spatial reasoning and real
+hardware.
+
+## What Is In The Repo
 
 ```text
-/Users/vibestartup/Code/lerobot-test
+lerobot_mcp_server.py     Stdio MCP server for robot, camera, and pose tools
+README.md                 Visitor-facing project overview
+AGENTS.md                 Agent handoff and operating instructions
+GEMINI.md                 Same as AGENTS.md
+CLAUDE.md                 Same as AGENTS.md
+docs/                     Detailed setup, operations, testing, and references
+assets/                   Welcome image and future visual assets
 ```
 
-Current known hardware defaults:
+## System Diagram
+
+```text
+MCP Client / LLM Agent
+        |
+        | stdio MCP
+        v
+chem-0 MCP Server
+        |
+        +-- OpenCV camera frame -> MCP image content
+        |
+        +-- LeRobot SO-101 follower arm
+              |
+              +-- Feetech STS3215 servo bus
+```
+
+## Core MCP Tools
+
+The server exposes tools for discovery, vision, robot state, and movement:
+
+- `list_cameras`
+- `view_camera`
+- `probe_feetech`
+- `connect_so101`
+- `observe`
+- `get_pose_table`
+- `move_pose`
+- `move_relative`
+- `disconnect`
+
+It also exposes the MCP resource:
+
+```text
+lerobot://pose-table
+```
+
+That resource gives agents calibrated limits, units, orientation notes, and
+common reference poses.
+
+## Six-Parameter Pose Interface
+
+The preferred motion interface is `move_pose`. It requires exactly six values:
+
+```json
+{
+  "pose": {
+    "shoulder_pan": -109,
+    "shoulder_lift": 0,
+    "elbow_flex": -70,
+    "wrist_flex": 0,
+    "wrist_roll": -164,
+    "gripper": 0.5
+  },
+  "max_step": 5
+}
+```
+
+Units:
+
+- `shoulder_pan`: degrees
+- `shoulder_lift`: degrees
+- `elbow_flex`: degrees
+- `wrist_flex`: degrees
+- `wrist_roll`: degrees
+- `gripper`: percent, `0..100`
+
+By default, poses outside calibrated limits are rejected.
+
+## Known Local Hardware Defaults
+
+The current physical setup was tested with:
 
 ```text
 robot id: mcp_so101
 serial port: /dev/cu.usbmodem5AB01815731
 camera id: 0
-pose resource: lerobot://pose-table
+calibration: ~/.cache/huggingface/lerobot/calibration/robots/so_follower/mcp_so101.json
 ```
 
-Calibration file:
+The last validated visual pose was approximately:
 
 ```text
-/Users/vibestartup/.cache/huggingface/lerobot/calibration/robots/so_follower/mcp_so101.json
+shoulder_pan.pos:  about -109
+shoulder_lift.pos: about 0
+elbow_flex.pos:    about -70
+wrist_flex.pos:    about 0
+wrist_roll.pos:    about -164
+gripper.pos:       about 0.5
 ```
 
-Do not delete or overwrite that calibration file unless you intend to recalibrate
-the physical arm.
+## Quick Start
 
-## Hardware Setup
-
-Known working setup:
-
-- Waveshare-style Bus Servo Adapter (A) / ST-SC serial bus servo driver board.
-- USB-C from adapter to laptop.
-- External servo power supply connected to the adapter board.
-- Arm servo bus cable connected to the correct ST/SC servo bus channel.
-- Board jumpers/channel configured so USB controls the servo bus.
-- Six STS3215 servos visible as IDs `1..6`, model `777`, baud `1000000`.
-
-Before commanding motion, always verify:
-
-```text
-probe_feetech -> IDs 1,2,3,4,5,6 all present
-connect_so101 -> connected true
-observe -> six .pos keys returned
-```
-
-If the serial port opens but no servos respond, check external servo power,
-jumper/channel position, cable polarity, and whether another process is holding
-the serial port.
-
-## Install / Run
-
-The local virtualenv already contains `lerobot[feetech]` and OpenCV:
-
-```sh
-.venv/bin/python lerobot_mcp_server.py
-```
-
-From scratch, install dependencies with:
+Install dependencies:
 
 ```sh
 python -m venv .venv
@@ -79,9 +150,13 @@ python -m venv .venv
 .venv/bin/python -m pip install 'lerobot[feetech]'
 ```
 
-## Mount In Codex
+Run the server:
 
-Configure Codex to launch this server over stdio:
+```sh
+.venv/bin/python lerobot_mcp_server.py
+```
+
+Mount it in Codex:
 
 ```json
 {
@@ -97,9 +172,7 @@ Configure Codex to launch this server over stdio:
 }
 ```
 
-Restart Codex after editing MCP config.
-
-Good first prompt for a fresh Codex session:
+Then ask the agent:
 
 ```text
 Use the chem-0 MCP. Read lerobot://pose-table, list cameras, view camera 0,
@@ -107,363 +180,35 @@ probe the LeRobot servos, connect to the SO101 arm, observe the current pose,
 then only use move_pose with max_step <= 5 and poses inside calibrated limits.
 ```
 
-Camera permissions: on macOS, the first camera call may require granting camera
-permission to the terminal or Codex host process.
-
-## MCP Tools
-
-### `list_serial_ports`
-
-Lists likely serial devices.
-
-```json
-{}
-```
-
-### `list_cameras`
-
-Probes numeric OpenCV camera indices.
-
-```json
-{
-  "max_id": 5
-}
-```
-
-Known test result: camera `0` returned frames at `1280x720`.
-
-### `view_camera`
-
-Captures one frame and returns MCP content with text metadata plus an `image`
-block.
-
-```json
-{
-  "camera_id": 0,
-  "width": 1280,
-  "height": 720,
-  "format": "jpeg",
-  "quality": 85
-}
-```
-
-Supported formats: `jpeg`, `png`.
-
-### `probe_feetech`
-
-Read-only servo probe. Does not move motors.
-
-```json
-{
-  "port": "/dev/cu.usbmodem5AB01815731",
-  "max_id": 6
-}
-```
-
-Expected working output includes:
-
-```text
-id 1 model 777 baud 1000000
-id 2 model 777 baud 1000000
-id 3 model 777 baud 1000000
-id 4 model 777 baud 1000000
-id 5 model 777 baud 1000000
-id 6 model 777 baud 1000000
-```
-
-### `connect_so101`
-
-Connects the calibrated SO follower arm.
-
-```json
-{
-  "port": "/dev/cu.usbmodem5AB01815731",
-  "id": "mcp_so101",
-  "max_delta": 5,
-  "calibrate": false
-}
-```
-
-`port` defaults to `/dev/cu.usbmodem5AB01815731`.
-`id` defaults to `mcp_so101`.
-
-### `observe`
-
-Reads current normalized LeRobot joint positions.
-
-```json
-{}
-```
-
-Returned keys:
-
-```text
-shoulder_pan.pos
-shoulder_lift.pos
-elbow_flex.pos
-wrist_flex.pos
-wrist_roll.pos
-gripper.pos
-```
-
-### `get_pose_table`
-
-Returns the same pose context as the `lerobot://pose-table` resource, as a tool
-result for clients that do not surface resources well.
-
-```json
-{}
-```
-
-### `move_pose`
-
-Moves to an absolute six-parameter pose. All six values are required.
-
-```json
-{
-  "pose": {
-    "shoulder_pan": -109,
-    "shoulder_lift": 0,
-    "elbow_flex": -70,
-    "wrist_flex": 0,
-    "wrist_roll": -164,
-    "gripper": 0.5
-  },
-  "max_step": 5,
-  "hold_seconds": 0.35,
-  "settle_seconds": 0.5,
-  "allow_out_of_range": false
-}
-```
-
-Units:
-
-- `shoulder_pan`: degrees
-- `shoulder_lift`: degrees
-- `elbow_flex`: degrees
-- `wrist_flex`: degrees
-- `wrist_roll`: degrees
-- `gripper`: `0..100`
-
-By default, `move_pose` rejects values outside calibrated limits and interpolates
-in small steps.
-
-### `move_relative`
-
-Moves one or more joints by relative deltas from the current observed pose.
-
-```json
-{
-  "deltas": {
-    "shoulder_pan": -5
-  },
-  "return_to_start": false,
-  "hold_seconds": 0.25
-}
-```
-
-Prefer `move_pose` for reproducible behavior. Use `move_relative` only for
-small nudges.
-
-### `disconnect`
-
-Disconnects from the robot and lets LeRobot disable torque using its defaults.
-
-```json
-{}
-```
-
-## MCP Resources
-
-### `lerobot://pose-table`
-
-Provides both JSON and Markdown contents. It contains:
-
-- robot id and default port,
-- joint order,
-- units,
-- calibrated limits,
-- sign/orientation notes,
-- common reference poses.
-
-Important orientation note from physical testing:
-
-```text
-shoulder_lift around +108 looked down/floor-parallel
-shoulder_lift around 0 looked roughly 90 degrees/upright
-shoulder_lift around -96 overshot past upright
-```
-
-## Calibrated Joint Limits
-
-These limits are encoded in `lerobot_mcp_server.py` and derived from the saved
-calibration:
-
-| Joint | Min | Max | Unit |
-| --- | ---: | ---: | --- |
-| `shoulder_pan` | -116.88 | 116.88 | degrees |
-| `shoulder_lift` | -113.05 | 113.05 | degrees |
-| `elbow_flex` | -81.05 | 81.05 | degrees |
-| `wrist_flex` | -103.99 | 103.99 | degrees |
-| `wrist_roll` | -180.00 | 180.00 | degrees |
-| `gripper` | 0.00 | 100.00 | percent |
-
-## Useful Common Poses
-
-These are also available from `lerobot://pose-table`.
-
-### Base Left, Vertical, Extended
-
-The best known pose after visual feedback: base left, upper arm about 90 degrees
-from the initial floor-parallel-down pose, elbow extended, wrist straight.
-
-```json
-{
-  "shoulder_pan": -109,
-  "shoulder_lift": 0,
-  "elbow_flex": -70,
-  "wrist_flex": 0,
-  "wrist_roll": -164,
-  "gripper": 0.5
-}
-```
-
-### Centered Vertical, Extended
-
-```json
-{
-  "shoulder_pan": 0,
-  "shoulder_lift": 0,
-  "elbow_flex": -70,
-  "wrist_flex": 0,
-  "wrist_roll": -164,
-  "gripper": 0.5
-}
-```
-
-### Neutral Midrange
-
-```json
-{
-  "shoulder_pan": 0,
-  "shoulder_lift": 0,
-  "elbow_flex": 0,
-  "wrist_flex": 0,
-  "wrist_roll": 0,
-  "gripper": 50
-}
-```
-
-## Tested End-to-End
-
-Last full local test pass covered:
-
-- `initialize`
-- `tools/list`
-- `resources/list`
-- `resources/read`
-- `get_pose_table`
-- `list_cameras`
-- `view_camera`
-- `probe_feetech`
-- `connect_so101`
-- `observe`
-- `move_pose` using the current pose, with `steps: 0`
-- `disconnect`
-- `python -m py_compile lerobot_mcp_server.py`
-
-Known latest robot observation during testing:
-
-```text
-shoulder_pan.pos:  about -109
-shoulder_lift.pos: about 0
-elbow_flex.pos:    about -70
-wrist_flex.pos:    about 0
-wrist_roll.pos:    about -164
-gripper.pos:       about 0.5
-```
-
-## Manual Test Commands
-
-Syntax check:
-
-```sh
-.venv/bin/python -m py_compile lerobot_mcp_server.py
-```
-
-Run server manually:
-
-```sh
-.venv/bin/python lerobot_mcp_server.py
-```
-
-Direct LeRobot read:
-
-```sh
-.venv/bin/python - <<'PY'
-from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
-robot = SO101Follower(SO101FollowerConfig(
-    port="/dev/cu.usbmodem5AB01815731",
-    id="mcp_so101",
-    cameras={},
-    max_relative_target=None,
-))
-try:
-    robot.connect(calibrate=False)
-    print(robot.get_observation())
-finally:
-    if robot.is_connected:
-        robot.disconnect()
-PY
-```
-
-## Troubleshooting
-
-### No Servos Found
-
-Symptoms:
-
-```text
-No status packet
-Missing motor IDs 1..6
-probe_feetech returns no hits
-```
-
-Likely causes:
-
-- external servo power supply is off,
-- USB-C is connected but servo power is not,
-- servo bus cable is on the wrong channel,
-- board jumper/channel is wrong,
-- cable polarity is wrong,
-- another process has the serial port open.
-
-Fix: power-cycle the servo board and USB, verify wiring, then run
-`probe_feetech` before connecting.
-
-### Intermittent Status Packet Failures
-
-The Feetech bus sometimes returns a transient no-status-packet error immediately
-after motion. The server retries observations in `observe_retry`, and raw pings
-usually recover. If repeated failures occur, disconnect/reconnect or power-cycle.
-
-### Camera Permission
-
-On macOS, OpenCV camera access may require granting camera permission to the
-terminal or MCP host. `list_cameras` may print OpenCV warnings for missing
-indices; that is harmless if camera `0` works.
+## Documentation
+
+- [docs/setup.md](docs/setup.md): hardware and software setup
+- [docs/mcp-tools.md](docs/mcp-tools.md): full tool contracts and examples
+- [docs/pose-table.md](docs/pose-table.md): pose semantics and reference poses
+- [docs/operations.md](docs/operations.md): safe operating workflow
+- [docs/testing.md](docs/testing.md): validation commands and expected results
+- [docs/troubleshooting.md](docs/troubleshooting.md): common hardware and camera issues
+- [docs/research-notes.md](docs/research-notes.md): project framing and next experiments
+
+## Current Status
+
+Working and tested:
+
+- camera discovery and JPEG frame capture
+- Feetech servo probe for IDs `1..6`
+- calibrated robot connection
+- six-joint observation
+- absolute no-op `move_pose` test
+- incremental real movement through `move_pose`
+
+Known limitation:
+
+- The Feetech bus can intermittently drop a status packet immediately after
+  motion. The server retries observations, but operators should still keep
+  motions small and visually monitored.
 
 ## Repository
 
-GitHub:
-
 ```text
 https://github.com/JacobFV/chem-0
-```
-
-Main commits:
-
-```text
-c3f5963 Add LeRobot MCP server
-8c7b8b7 Add MCP camera frame tools
 ```

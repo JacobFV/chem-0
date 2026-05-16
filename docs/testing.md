@@ -55,10 +55,26 @@ create_experiment
 list_experiments
 list_agent_session_events
 list_experiment_artifacts
+set_default_robot
+get_default_robot
 record_ph
 ```
 
-Current expected tool count: `23`.
+Current expected tool count: `25`.
+
+Robot selection smoke path:
+
+```json
+{
+  "name": "set_default_robot",
+  "arguments": {
+    "robot_id": "left_arm"
+  }
+}
+```
+
+Then call `get_default_robot`; expected `robot_id` is `left_arm`. Robot-aware
+tools should also expose optional `robot_id` in their input schemas.
 
 Expected resource:
 

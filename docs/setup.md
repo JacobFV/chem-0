@@ -101,6 +101,10 @@ MCP clients should call `create_experiment` first, then pass the returned
 `experiment_id` into hardware, camera, and robot tool calls so the backend can
 append `tool_call` and `tool_response` records to the experiment.
 
+For multi-arm setups, call `set_default_robot(robot_id)` once or pass
+`robot_id` into each robot-aware tool. If `robot_id` is omitted, the backend
+uses its current default robot id.
+
 ## Optional Voice
 
 For Electron-hosted agent sessions and MCP voice tools:

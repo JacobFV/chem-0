@@ -263,14 +263,30 @@ def pose_table_markdown() -> str:
     return "\n".join(lines)
 
 
-def observe_retry(tries: int = 8, delay_s: float = 0.25) -> dict[str, Any]:
-    if not STATE.connected:
+def _robot_id_from_args(args: dict[str, Any] | None = None) -> str:
+    if args and args.get("robot_id"):
+        return str(args["robot_id"])
+    return DEFAULT_ROBOT_ID
+
+
+def robot_state(args_or_id: dict[str, Any] | str | None = None) -> "RobotState":
+    if isinstance(args_or_id, str):
+        robot_id = args_or_id or DEFAULT_ROBOT_ID
+    else:
+        robot_id = _robot_id_from_args(args_or_id)
+    if robot_id not in ROBOTS:
+        ROBOTS[robot_id] = RobotState(robot_id=robot_id)
+    return ROBOTS[robot_id]
+
+
+def observe_retry(state: "RobotState", tries: int = 8, delay_s: float = 0.25) -> dict[str, Any]:
+    if not state.connected:
         raise RuntimeError("Robot is not connected. Call connect_so101 first.")
 
     last_exc: Exception | None = None
     for _ in range(tries):
         try:
-            return STATE.robot.get_observation()
+            return state.robot.get_observation()
         except Exception as exc:
             last_exc = exc
             time.sleep(delay_s)
@@ -331,37 +347,42 @@ def validate_position(x: float, y: float, z: float, allow_out_of_workspace: bool
     return position
 
 
-def get_kinematics(urdf_path: str | None = None, target_frame: str | None = None) -> Any:
+def get_kinematics(state: "RobotState", urdf_path: str | None = None, target_frame: str | None = None) -> Any:
     from lerobot.model.kinematics import RobotKinematics
 
-    resolved_urdf = str(Path(urdf_path or STATE.urdf_path or DEFAULT_URDF_PATH).expanduser().resolve())
-    resolved_target = target_frame or STATE.target_frame or DEFAULT_TARGET_FRAME
+    resolved_urdf = str(Path(urdf_path or state.urdf_path or DEFAULT_URDF_PATH).expanduser().resolve())
+    resolved_target = target_frame or state.target_frame or DEFAULT_TARGET_FRAME
 
     if not Path(resolved_urdf).exists():
         raise FileNotFoundError(f"URDF not found: {resolved_urdf}")
 
     if (
-        STATE.kinematics is None
-        or STATE.urdf_path != resolved_urdf
-        or STATE.target_frame != resolved_target
+        state.kinematics is None
+        or state.urdf_path != resolved_urdf
+        or state.target_frame != resolved_target
     ):
-        STATE.kinematics = RobotKinematics(
+        state.kinematics = RobotKinematics(
             urdf_path=resolved_urdf,
             target_frame_name=resolved_target,
             joint_names=ARM_JOINTS,
         )
-        STATE.urdf_path = resolved_urdf
-        STATE.target_frame = resolved_target
+        state.urdf_path = resolved_urdf
+        state.target_frame = resolved_target
 
-    return STATE.kinematics
-
-
-def forward_kinematics_for_pose(pose: dict[str, float], urdf_path: str | None = None, target_frame: str | None = None) -> Any:
-    return get_kinematics(urdf_path, target_frame).forward_kinematics(arm_array(pose))
+    return state.kinematics
 
 
-def forward_kinematics_for_arm_array(q: Any, urdf_path: str | None = None, target_frame: str | None = None) -> Any:
-    return get_kinematics(urdf_path, target_frame).forward_kinematics(q)
+def forward_kinematics_for_pose(
+    pose: dict[str, float],
+    urdf_path: str | None = None,
+    target_frame: str | None = None,
+    state: "RobotState" | None = None,
+) -> Any:
+    return get_kinematics(state or robot_state(DEFAULT_ROBOT_ID), urdf_path, target_frame).forward_kinematics(arm_array(pose))
+
+
+def forward_kinematics_for_arm_array(q: Any, urdf_path: str | None = None, target_frame: str | None = None, state: "RobotState" | None = None) -> Any:
+    return get_kinematics(state or robot_state(DEFAULT_ROBOT_ID), urdf_path, target_frame).forward_kinematics(q)
 
 
 def rotation_vector_from_matrix(matrix: Any) -> list[float]:
@@ -373,6 +394,7 @@ def rotation_vector_from_matrix(matrix: Any) -> list[float]:
 def solve_position_ik(
     start_pose: dict[str, float],
     target_xyz: dict[str, float],
+    state: "RobotState",
     urdf_path: str | None = None,
     target_frame: str | None = None,
     tolerance_m: float = 0.004,
@@ -385,7 +407,7 @@ def solve_position_ik(
     q = arm_array(start_pose)
     target = np.array([target_xyz["x"], target_xyz["y"], target_xyz["z"]], dtype=float)
     limits = np.array([JOINT_LIMITS[joint] for joint in ARM_JOINTS], dtype=float)
-    kinematics = get_kinematics(urdf_path, target_frame)
+    kinematics = get_kinematics(state, urdf_path, target_frame)
     last_error = None
 
     for iteration in range(max_iterations + 1):
@@ -436,19 +458,20 @@ def solve_position_ik(
 
 
 def perform_set_arm_pose(args: dict[str, Any]) -> dict[str, Any]:
-    if not STATE.connected:
+    state = robot_state(args)
+    if not state.connected:
         raise RuntimeError("Robot is not connected. Call connect_so101 first.")
 
     pose = validate_pose(args.get("pose"), bool(args.get("allow_out_of_range", False)))
-    max_step = max(0.5, min(20.0, float(args.get("max_step", STATE.max_delta))))
+    max_step = max(0.5, min(20.0, float(args.get("max_step", state.max_delta))))
     hold_seconds = max(0.0, min(5.0, float(args.get("hold_seconds", 0.35))))
     settle_seconds = max(0.0, min(5.0, float(args.get("settle_seconds", 0.5))))
 
-    start = observe_retry()
+    start = observe_retry(state)
     steps: list[dict[str, float]] = []
 
     for _ in range(200):
-        current = observe_retry()
+        current = observe_retry(state)
         next_pose: dict[str, float] = {}
         done = True
 
@@ -464,14 +487,14 @@ def perform_set_arm_pose(args: dict[str, Any]) -> dict[str, Any]:
         if done:
             break
 
-        sent = STATE.robot.send_action(action_from_pose(next_pose))
+        sent = state.robot.send_action(action_from_pose(next_pose))
         steps.append({key.removesuffix(".pos"): value for key, value in sent.items()})
         time.sleep(hold_seconds)
     else:
         raise RuntimeError("set_arm_pose exceeded 200 interpolation steps before reaching target.")
 
     time.sleep(settle_seconds)
-    final = observe_retry()
+    final = observe_retry(state)
     return {
         "start": start,
         "start_pose": arm_pose_from_observation(start),
@@ -488,6 +511,7 @@ def perform_set_arm_pose(args: dict[str, Any]) -> dict[str, Any]:
 
 @dataclass
 class RobotState:
+    robot_id: str = DEFAULT_ROBOT_ID
     robot: Any = None
     port: str | None = None
     max_delta: float = DEFAULT_MAX_DELTA
@@ -500,7 +524,8 @@ class RobotState:
         return bool(self.robot is not None and self.robot.is_connected)
 
 
-STATE = RobotState()
+ROBOTS: dict[str, RobotState] = {}
+STATE = robot_state(DEFAULT_ROBOT_ID)
 
 
 RESOURCES: list[dict[str, Any]] = [
@@ -871,38 +896,42 @@ def probe_feetech(args: dict[str, Any]) -> dict[str, Any]:
 def connect_so101(args: dict[str, Any]) -> dict[str, Any]:
     from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 
-    if STATE.connected:
-        STATE.robot.disconnect()
+    state = robot_state(args)
+    if state.connected:
+        state.robot.disconnect()
 
     port = args.get("port", DEFAULT_PORT)
-    STATE.max_delta = float(args.get("max_delta", DEFAULT_MAX_DELTA))
+    state.max_delta = float(args.get("max_delta", DEFAULT_MAX_DELTA))
     config = SO101FollowerConfig(
         port=port,
-        id=args.get("id", DEFAULT_ROBOT_ID),
+        id=args.get("id") or state.robot_id,
         cameras={},
-        max_relative_target=STATE.max_delta,
+        max_relative_target=state.max_delta,
     )
     robot = SO101Follower(config)
     robot.connect(calibrate=bool(args.get("calibrate", False)))
-    STATE.robot = robot
-    STATE.port = port
-    return _tool_json({"connected": True, "port": port, "features": sorted(robot.action_features)})
+    state.robot = robot
+    state.port = port
+    return _tool_json({"connected": True, "robot_id": state.robot_id, "port": port, "features": sorted(robot.action_features)})
 
 
-def observe(_: dict[str, Any]) -> dict[str, Any]:
-    if not STATE.connected:
+def observe(args: dict[str, Any]) -> dict[str, Any]:
+    state = robot_state(args)
+    if not state.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
-    return _tool_json(observe_retry())
+    return _tool_json(observe_retry(state))
 
 
-def get_arm_pose(_: dict[str, Any]) -> dict[str, Any]:
-    if not STATE.connected:
+def get_arm_pose(args: dict[str, Any]) -> dict[str, Any]:
+    state = robot_state(args)
+    if not state.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
 
-    observation = observe_retry()
+    observation = observe_retry(state)
     pose = arm_pose_from_observation(observation)
     return _tool_json(
         {
+            "robot_id": state.robot_id,
             "pose": pose,
             "tuple": arm_pose_tuple(pose),
             "tuple_order": JOINTS,
@@ -917,12 +946,13 @@ def get_pose_table(_: dict[str, Any]) -> dict[str, Any]:
 
 
 def get_position(args: dict[str, Any]) -> dict[str, Any]:
-    if not STATE.connected:
+    state = robot_state(args)
+    if not state.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
 
-    observation = observe_retry()
+    observation = observe_retry(state)
     pose = arm_pose_from_observation(observation)
-    transform = forward_kinematics_for_pose(pose, args.get("urdf_path"), args.get("target_frame"))
+    transform = forward_kinematics_for_pose(pose, args.get("urdf_path"), args.get("target_frame"), state)
     position = [float(v) for v in transform[:3, 3]]
     gripper = float(pose["gripper"])
     return _tool_json(
@@ -931,8 +961,9 @@ def get_position(args: dict[str, Any]) -> dict[str, Any]:
             "tuple": [position[0], position[1], position[2], gripper],
             "tuple_order": ["x", "y", "z", "gripper"],
             "units": {"x": "meters", "y": "meters", "z": "meters", "gripper": "percent_0_to_100"},
-            "frame": STATE.target_frame,
-            "urdf_path": STATE.urdf_path,
+            "robot_id": state.robot_id,
+            "frame": state.target_frame,
+            "urdf_path": state.urdf_path,
             "orientation_rotvec": rotation_vector_from_matrix(transform),
             "arm_pose": pose,
             "arm_tuple": arm_pose_tuple(pose),
@@ -948,7 +979,8 @@ def set_arm_pose(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def set_position(args: dict[str, Any]) -> dict[str, Any]:
-    if not STATE.connected:
+    state = robot_state(args)
+    if not state.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
 
     try:
@@ -959,11 +991,12 @@ def set_position(args: dict[str, Any]) -> dict[str, Any]:
             bool(args.get("allow_out_of_workspace", False)),
         )
 
-        observation = observe_retry()
+        observation = observe_retry(state)
         start_pose = arm_pose_from_observation(observation)
         ik = solve_position_ik(
             start_pose,
             target_position,
+            state,
             urdf_path=args.get("urdf_path"),
             target_frame=args.get("target_frame"),
             tolerance_m=max(0.0, min(0.05, float(args.get("tolerance_m", 0.004)))),
@@ -984,7 +1017,7 @@ def set_position(args: dict[str, Any]) -> dict[str, Any]:
         validate_pose(target_pose, bool(args.get("allow_out_of_range", False)))
         result = perform_set_arm_pose({**args, "pose": target_pose})
         final_pose = result["final_pose"]
-        final_transform = forward_kinematics_for_pose(final_pose, STATE.urdf_path, STATE.target_frame)
+        final_transform = forward_kinematics_for_pose(final_pose, state.urdf_path, state.target_frame, state)
         final_position = [float(v) for v in final_transform[:3, 3]]
         import numpy as np
 
@@ -1019,8 +1052,9 @@ def set_position(args: dict[str, Any]) -> dict[str, Any]:
                         - np.array([target_position["x"], target_position["y"], target_position["z"]], dtype=float)
                     )
                 ),
-                "frame": STATE.target_frame,
-                "urdf_path": STATE.urdf_path,
+                "robot_id": state.robot_id,
+                "frame": state.target_frame,
+                "urdf_path": state.urdf_path,
             }
         )
         return _tool_json(result)
@@ -1029,11 +1063,12 @@ def set_position(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def set_gripper(args: dict[str, Any], value: float) -> dict[str, Any]:
-    if not STATE.connected:
+    state = robot_state(args)
+    if not state.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
 
     try:
-        observation = observe_retry()
+        observation = observe_retry(state)
         pose = arm_pose_from_observation(observation)
         pose["gripper"] = max(JOINT_LIMITS["gripper"][0], min(JOINT_LIMITS["gripper"][1], float(args.get("value", value))))
         return _tool_json(perform_set_arm_pose({**args, "pose": pose}))
@@ -1057,46 +1092,48 @@ def ask_export(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def move_relative(args: dict[str, Any]) -> dict[str, Any]:
-    if not STATE.connected:
+    state = robot_state(args)
+    if not state.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
 
     deltas = args["deltas"]
     if not isinstance(deltas, dict) or not deltas:
         return _tool_error("deltas must be a non-empty object.")
 
-    start = observe_retry()
+    start = observe_retry(state)
     action: dict[str, float] = {}
     for joint, raw_delta in deltas.items():
         key = joint if joint.endswith(".pos") else f"{joint}.pos"
         if key not in start:
             return _tool_error(f"Unknown joint '{joint}'. Available keys: {sorted(start)}")
         delta = float(raw_delta)
-        if abs(delta) > STATE.max_delta:
-            return _tool_error(f"Delta for {joint} exceeds max_delta={STATE.max_delta}: {delta}")
+        if abs(delta) > state.max_delta:
+            return _tool_error(f"Delta for {joint} exceeds max_delta={state.max_delta}: {delta}")
         action[key] = float(start[key]) + delta
 
     hold_seconds = max(0.0, min(5.0, float(args.get("hold_seconds", 0.25))))
-    sent = STATE.robot.send_action(action)
+    sent = state.robot.send_action(action)
     time.sleep(hold_seconds)
-    after = observe_retry()
+    after = observe_retry(state)
 
-    result: dict[str, Any] = {"start": start, "sent": sent, "after": after}
+    result: dict[str, Any] = {"robot_id": state.robot_id, "start": start, "sent": sent, "after": after}
     if bool(args.get("return_to_start", False)):
         restore = {k: start[k] for k in action}
-        result["restore_sent"] = STATE.robot.send_action(restore)
+        result["restore_sent"] = state.robot.send_action(restore)
         time.sleep(hold_seconds)
-        result["restored"] = observe_retry()
+        result["restored"] = observe_retry(state)
     return _tool_json(result)
 
 
-def disconnect(_: dict[str, Any]) -> dict[str, Any]:
-    was_connected = STATE.connected
-    if STATE.robot is not None and STATE.robot.is_connected:
-        STATE.robot.disconnect()
-    STATE.robot = None
-    STATE.port = None
-    STATE.kinematics = None
-    return _tool_json({"disconnected": was_connected})
+def disconnect(args: dict[str, Any]) -> dict[str, Any]:
+    state = robot_state(args)
+    was_connected = state.connected
+    if state.robot is not None and state.robot.is_connected:
+        state.robot.disconnect()
+    state.robot = None
+    state.port = None
+    state.kinematics = None
+    return _tool_json({"robot_id": state.robot_id, "disconnected": was_connected})
 
 
 HANDLERS = {

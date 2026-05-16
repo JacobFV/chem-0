@@ -10,12 +10,25 @@ import type { Experiment, JsonObject } from "./types";
 
 const DEFAULT_MODEL = "gpt-5.5";
 const MAX_AGENT_STEPS = 8;
+const ROBOT_TOOL_NAMES = new Set([
+  "connect_so101",
+  "observe",
+  "get_arm_pose",
+  "get_position",
+  "set_arm_pose",
+  "set_position",
+  "open_gripper",
+  "close_gripper",
+  "move_relative",
+  "disconnect"
+]);
 
 export class Chem0Backend extends EventEmitter {
   readonly store: Chem0Store;
   readonly bridge: PythonBridge;
   readonly audio: AudioService;
   private initialized = false;
+  private defaultRobotId: string | null = null;
 
   constructor(readonly repoRoot: string, dataDir = path.join(repoRoot, "data")) {
     super();
@@ -65,6 +78,15 @@ export class Chem0Backend extends EventEmitter {
     if (name === "list_experiment_artifacts") {
       return { artifacts: this.store.listArtifacts(String(args.experiment_id)) };
     }
+    if (name === "set_default_robot") {
+      const robotId = String(args.robot_id ?? "").trim();
+      if (!robotId) throw new Error("set_default_robot requires robot_id.");
+      this.defaultRobotId = robotId;
+      return { robot_id: robotId };
+    }
+    if (name === "get_default_robot") {
+      return { robot_id: this.defaultRobotId };
+    }
     if (name === "record_ph") {
       const value = Number(args.value);
       const note = typeof args.note === "string" ? args.note : "";
@@ -97,7 +119,7 @@ export class Chem0Backend extends EventEmitter {
     }
 
     const experimentId = typeof args.experiment_id === "string" ? args.experiment_id : undefined;
-    const cleanArgs = { ...args };
+    const cleanArgs = this.withRobotId(name, { ...args });
     delete cleanArgs.experiment_id;
     if (experimentId) {
       this.store.appendEvent({ experimentId, type: "tool_call", name, content: { arguments: cleanArgs } });
@@ -307,6 +329,7 @@ export class Chem0Backend extends EventEmitter {
   private withExperimentId(tool: JsonObject): JsonObject {
     const schema = (tool.inputSchema ?? {}) as JsonObject;
     const properties = ((schema.properties ?? {}) as JsonObject);
+    const shouldIncludeRobot = typeof tool.name === "string" && ROBOT_TOOL_NAMES.has(tool.name);
     return {
       ...tool,
       inputSchema: {
@@ -316,10 +339,27 @@ export class Chem0Backend extends EventEmitter {
           experiment_id: {
             type: "string",
             description: "Optional experiment id used by the Node backend to log MCP tool calls and responses."
-          }
+          },
+          ...(shouldIncludeRobot
+            ? {
+                robot_id: {
+                  type: ["string", "null"],
+                  default: null,
+                  description: "Optional robot selector. If omitted or null, the backend default robot is used."
+                }
+              }
+            : {})
         }
       }
     };
+  }
+
+  private withRobotId(name: string, args: JsonObject): JsonObject {
+    if (!ROBOT_TOOL_NAMES.has(name)) return args;
+    if (typeof args.robot_id === "string" && args.robot_id.trim()) return args;
+    if (this.defaultRobotId) return { ...args, robot_id: this.defaultRobotId };
+    delete args.robot_id;
+    return args;
   }
 
   private backendTools(): JsonObject[] {
@@ -358,6 +398,27 @@ export class Chem0Backend extends EventEmitter {
           type: "object",
           properties: { experiment_id: { type: "string" } },
           required: ["experiment_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "set_default_robot",
+        description: "Set the backend default robot id used when robot tools omit robot_id.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            robot_id: { type: "string" }
+          },
+          required: ["robot_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "get_default_robot",
+        description: "Return the backend default robot id, or null if no default has been set.",
+        inputSchema: {
+          type: "object",
+          properties: {},
           additionalProperties: false
         }
       },

@@ -22,6 +22,8 @@ declare global {
 const output = document.querySelector<HTMLPreElement>("#output")!;
 const experimentSelect = document.querySelector<HTMLSelectElement>("#experiment")!;
 const experimentName = document.querySelector<HTMLInputElement>("#experiment-name")!;
+const defaultRobotInput = document.querySelector<HTMLInputElement>("#default-robot")!;
+const setDefaultRobot = document.querySelector<HTMLButtonElement>("#set-default-robot")!;
 const activeExperiment = document.querySelector<HTMLDivElement>("#active-experiment")!;
 const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
 const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
@@ -38,6 +40,7 @@ const camStreams: (MediaStream | null)[] = [null, null, null];
 
 let experimentId = "";
 let sessionId = "";
+let defaultRobotId = "";
 let assistantBubble: HTMLDivElement | null = null;
 let mediaRecorder: MediaRecorder | null = null;
 let recordedChunks: BlobPart[] = [];
@@ -50,7 +53,10 @@ function show(value: unknown): void {
 }
 
 function withExperiment(args: JsonObject = {}): JsonObject {
-  return experimentId ? { ...args, experiment_id: experimentId } : args;
+  const next: JsonObject = { ...args };
+  if (experimentId) next.experiment_id = experimentId;
+  if (defaultRobotId && !next.robot_id) next.robot_id = defaultRobotId;
+  return next;
 }
 
 function setActive(experiment: JsonObject, session?: JsonObject): void {
@@ -297,6 +303,9 @@ window.addEventListener("beforeunload", () => {
 
 async function boot(): Promise<void> {
   const [tools] = await Promise.all([window.chem0.listTools(), refreshExperiments()]);
+  const defaultRobot = await window.chem0.callTool("get_default_robot", {});
+  defaultRobotId = typeof defaultRobot.robot_id === "string" ? defaultRobot.robot_id : "";
+  defaultRobotInput.value = defaultRobotId;
   show(tools);
   await loadEvents();
   void initBrowserCameras();
@@ -325,6 +334,17 @@ experimentSelect.addEventListener("change", async () => {
 
 document.querySelector("#list-tools")?.addEventListener("click", () => void boot());
 document.querySelector("#pose-table")?.addEventListener("click", async () => show(await window.chem0.readResource("lerobot://pose-table")));
+setDefaultRobot.addEventListener("click", async () => {
+  const robotId = defaultRobotInput.value.trim();
+  if (!robotId) {
+    show("Enter a robot_id first.");
+    return;
+  }
+  const result = await window.chem0.callTool("set_default_robot", { robot_id: robotId });
+  defaultRobotId = String(result.robot_id ?? robotId);
+  defaultRobotInput.value = defaultRobotId;
+  show(result);
+});
 
 sendMessage.addEventListener("click", async () => {
   await sendToAgent(chatInput.value);

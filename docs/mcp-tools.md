@@ -53,6 +53,43 @@ Lists local blob references for an experiment.
 }
 ```
 
+## Robot Selection
+
+Robot motion/state tools accept optional `robot_id`. If omitted or `null`, the
+backend uses the current default robot id. This lets two arms share the same
+servo adapter while the agent still addresses one logical robot at a time.
+
+Robot-aware tools:
+
+- `connect_so101`
+- `observe`
+- `get_arm_pose`
+- `get_position`
+- `set_arm_pose`
+- `set_position`
+- `open_gripper`
+- `close_gripper`
+- `move_relative`
+- `disconnect`
+
+### `set_default_robot`
+
+Sets the backend default robot id for subsequent robot-aware tools.
+
+```json
+{
+  "robot_id": "left_arm"
+}
+```
+
+### `get_default_robot`
+
+Returns the current default robot id, or `null`.
+
+```json
+{}
+```
+
 ## Discovery
 
 ### `list_serial_ports`
@@ -123,6 +160,7 @@ Connects the calibrated follower arm.
 ```json
 {
   "port": "/dev/cu.usbmodem5AB01815731",
+  "robot_id": "left_arm",
   "id": "mcp_so101",
   "max_delta": 5,
   "calibrate": false

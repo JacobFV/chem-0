@@ -75,23 +75,25 @@ speech without an API.
 ## Safe Operating Sequence
 
 1. `create_experiment`; keep the returned `experiment_id`.
-2. Read `lerobot://pose-table`.
-3. `list_cameras` with the `experiment_id`.
-4. `view_camera` with `camera_id: 0` and the `experiment_id`.
-5. `probe_feetech` with `max_id: 6` and the `experiment_id`.
-6. Confirm servo IDs `1..6`, model `777`, baud `1000000`.
-7. `connect_so101`.
-8. `observe`.
-9. `get_arm_pose`.
-10. Move with `set_arm_pose` for joint-space control or `set_position` for IK.
-11. Use `ask_export(question)` only as a placeholder for future expert review;
+2. If multiple arms are present, call `set_default_robot(robot_id)` or pass
+   `robot_id` into each robot-aware tool.
+3. Read `lerobot://pose-table`.
+4. `list_cameras` with the `experiment_id`.
+5. `view_camera` with `camera_id: 0` and the `experiment_id`.
+6. `probe_feetech` with `max_id: 6` and the `experiment_id`.
+7. Confirm servo IDs `1..6`, model `777`, baud `1000000`.
+8. `connect_so101`.
+9. `observe`.
+10. `get_arm_pose`.
+11. Move with `set_arm_pose` for joint-space control or `set_position` for IK.
+12. Use `ask_export(question)` only as a placeholder for future expert review;
     it currently returns `expert not available`.
-12. Use `speak_to_human` before risky or ambiguous actions and
+13. Use `speak_to_human` before risky or ambiguous actions and
     `listen_to_human` to capture the reply.
-13. Keep `max_step <= 5` unless a human explicitly approves otherwise.
-14. Use `list_agent_session_events` and `list_experiment_artifacts` to review
+14. Keep `max_step <= 5` unless a human explicitly approves otherwise.
+15. Use `list_agent_session_events` and `list_experiment_artifacts` to review
     the run.
-15. `disconnect`.
+16. `disconnect`.
 
 MCP clients cannot fully mirror their chat history into chem-0. Passing
 `experiment_id` into tool calls is therefore required for useful MCP-side

@@ -85,6 +85,10 @@ button:hover {
   min-width: 220px;
 }
 
+.experiment-bar button {
+  align-self: end;
+}
+
 #active-experiment {
   color: #888888;
   font-size: 13px;

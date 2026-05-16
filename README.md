@@ -185,6 +185,8 @@ The server exposes tools for discovery, vision, robot state, and movement:
 - `list_experiments`
 - `list_agent_session_events`
 - `list_experiment_artifacts`
+- `set_default_robot`
+- `get_default_robot`
 
 It also exposes the MCP resource:
 
@@ -333,6 +335,10 @@ export ELEVENLABS_VOICE_ID=... # optional
 configured. `provider: "system"` uses macOS system speech. `listen_to_human`
 transcribes Electron-recorded mic clips or an MCP-provided local `audio_path`.
 The shared backend also loads a repo-root `.env` file automatically.
+
+For multi-arm setups, robot motion/state tools accept optional `robot_id`. Use
+`set_default_robot(robot_id)` once to set the backend default for later calls
+that omit `robot_id`; use `get_default_robot()` to inspect it.
 
 ## Documentation
 

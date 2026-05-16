@@ -5,11 +5,18 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-renderer.mjs",
-    "dev": "npm run build && electron dist/main/main.js"
+    "dev": "npm run build && electron dist/main/main.js",
+    "watch": "npm run build && concurrently -k -n tsc,copy,app -c blue,magenta,green \"tsc -p tsconfig.json -w --preserveWatchOutput\" \"chokidar 'src/renderer/*.{html,css}' -c 'node scripts/copy-renderer.mjs'\" \"electronmon .\""
+  },
+  "electronmon": {
+    "patterns": ["dist/**/*"]
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "chokidar-cli": "^3.0.0",
+    "concurrently": "^9.1.0",
     "electron": "^33.2.1",
+    "electronmon": "^2.0.3",
     "typescript": "^5.7.2"
   }
 }

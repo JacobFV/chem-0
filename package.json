@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "electron:build": "npm --workspace @chem0/electron run build",
-    "electron:dev": "npm --workspace @chem0/electron run dev"
+    "electron:dev": "npm --workspace @chem0/electron run dev",
+    "electron:watch": "npm --workspace @chem0/electron run watch"
   }
 }

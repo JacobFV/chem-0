@@ -11,16 +11,17 @@
 
 This repository contains a compact stdio MCP server that lets an MCP-capable
 agent, such as Codex, connect to a Hugging Face LeRobot SO-101/SO-100 follower
-arm, inspect camera frames, read calibrated joint poses, and command the arm
-through a six-parameter pose interface.
+arm, inspect camera frames, read calibrated joint poses, command the arm
+through a six-parameter pose interface, and optionally move the end effector
+through a small Cartesian IK interface.
 
 The project is intentionally small enough to understand at a science-fair table:
 
 1. The robot arm is calibrated into a known coordinate space.
 2. The camera returns a frame to the agent.
 3. The agent receives a table of safe reference poses.
-4. The agent chooses a target pose.
-5. The MCP server validates the pose and moves the arm in small steps.
+4. The agent chooses a target joint pose or Cartesian position.
+5. The MCP server validates the command and moves the arm in small steps.
 
 ## Why This Matters
 
@@ -29,8 +30,9 @@ hard-coded scripts. `chem-0` asks whether a simple open-source interface can
 make robot control more inspectable:
 
 - Every command is a named MCP tool call.
-- Every full-arm movement is a six-number pose.
+- Every full-arm movement is a six-number pose or a bounded Cartesian target.
 - Every pose is checked against calibrated limits.
+- Cartesian motion uses a repo-local SO-101 URDF plus LeRobot/`placo` FK.
 - Every agent can read the same pose table before moving.
 - Camera frames are available through the same MCP channel as motion commands.
 
@@ -41,13 +43,13 @@ hardware.
 ## What Is In The Repo
 
 ```text
-lerobot_mcp_server.py     Stdio MCP server for robot, camera, and pose tools
+lerobot_mcp_server.py     Stdio MCP server for robot, camera, pose, and IK tools
 README.md                 Visitor-facing project overview
 AGENTS.md                 Agent handoff and operating instructions
 GEMINI.md                 Same as AGENTS.md
 CLAUDE.md                 Same as AGENTS.md
 docs/                     Detailed setup, operations, testing, and references
-assets/                   Welcome image and future visual assets
+assets/                   Welcome image and SO-101 kinematic URDF
 ```
 
 ## System Diagram
@@ -57,7 +59,8 @@ flowchart LR
     agent["MCP Client / LLM Agent<br/>Codex, Claude, Gemini, etc."]
     server["chem-0 stdio MCP Server<br/><code>lerobot_mcp_server.py</code>"]
     pose["Pose Table Resource<br/><code>lerobot://pose-table</code>"]
-    safety["Pose Validation + Step Interpolation<br/>calibrated limits, max_step"]
+    ik["SO-101 FK / IK<br/><code>placo</code> + URDF"]
+    safety["Validation + Step Interpolation<br/>joint limits, workspace, max_step"]
     camera["OpenCV Camera<br/>camera_id 0"]
     robot["LeRobot SO-101/SO-100<br/>follower arm"]
     bus["Feetech STS3215 Servo Bus<br/>IDs 1-6 at 1 Mbps"]
@@ -67,19 +70,23 @@ flowchart LR
     server -->|"resources/read"| pose
     server -->|"list_cameras<br/>view_camera"| camera
     camera -->|"JPEG / PNG frame<br/>MCP image content"| server
-    server -->|"connect_so101<br/>observe"| robot
-    server -->|"move_pose"| safety
-    safety -->|"validated absolute pose"| robot
+    server -->|"connect_so101<br/>observe|get_arm_pose"| robot
+    server -->|"get_position<br/>set_position"| ik
+    ik -->|"IK joint target"| safety
+    server -->|"set_arm_pose<br/>move_pose alias"| safety
+    safety -->|"validated joint action"| robot
     calib -->|"joint limits + homing"| server
     robot <-->|"serial commands"| bus
 
     classDef agent fill:#eef6ff,stroke:#8fbceb,color:#17324d
     classDef server fill:#f0f8f3,stroke:#92c8a0,color:#1f4d2d
     classDef safety fill:#fff7ec,stroke:#e0ad6e,color:#5d3d16
+    classDef ik fill:#eefaf9,stroke:#79bbb4,color:#164d49
     classDef hardware fill:#f4f1ff,stroke:#a99be8,color:#2f255f
     class agent agent
     class server,pose,calib server
     class safety safety
+    class ik ik
     class camera,robot,bus hardware
 ```
 
@@ -92,8 +99,14 @@ The server exposes tools for discovery, vision, robot state, and movement:
 - `probe_feetech`
 - `connect_so101`
 - `observe`
+- `get_arm_pose`
 - `get_pose_table`
-- `move_pose`
+- `get_position`
+- `set_arm_pose`
+- `move_pose` backward-compatible alias
+- `set_position`
+- `open_gripper`
+- `close_gripper`
 - `move_relative`
 - `disconnect`
 
@@ -108,7 +121,9 @@ common reference poses.
 
 ## Six-Parameter Pose Interface
 
-The preferred motion interface is `move_pose`. It requires exactly six values:
+The preferred joint-space motion interface is `set_arm_pose`. It requires
+exactly six values and returns the same ordered tuple. `move_pose` is kept as a
+backward-compatible alias.
 
 ```json
 {
@@ -134,6 +149,28 @@ Units:
 - `gripper`: percent, `0..100`
 
 By default, poses outside calibrated limits are rejected.
+
+## Cartesian IK Interface
+
+The Cartesian layer is intentionally small:
+
+- `get_position` returns `[x, y, z, gripper]`.
+- `set_position` accepts `x`, `y`, `z`, and optional `gripper`.
+- Units are meters in the SO-101 URDF base frame for `x/y/z`.
+- The gripper remains percent `0..100`.
+
+The default workspace is conservative:
+
+```text
+x: -0.35..0.35 m
+y: -0.35..0.35 m
+z:  0.02..0.60 m
+```
+
+The server uses `assets/kinematics/so101_kinematics.urdf` and LeRobot's
+`RobotKinematics`/`placo` FK path. A compact damped-least-squares IK loop
+computes a six-joint target, then routes the movement through the same joint
+limit checks and step interpolation as `set_arm_pose`.
 
 ## Known Local Hardware Defaults
 
@@ -164,7 +201,7 @@ Install dependencies:
 ```sh
 python -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install 'lerobot[feetech]'
+./scripts/install_deps.sh
 ```
 
 Run the server:
@@ -194,7 +231,8 @@ Then ask the agent:
 ```text
 Use the chem-0 MCP. Read lerobot://pose-table, list cameras, view camera 0,
 probe the LeRobot servos, connect to the SO101 arm, observe the current pose,
-then only use move_pose with max_step <= 5 and poses inside calibrated limits.
+then use get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
+for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 ```
 
 ## Documentation
@@ -203,6 +241,7 @@ then only use move_pose with max_step <= 5 and poses inside calibrated limits.
 - [docs/architecture.md](docs/architecture.md): reusable Mermaid architecture diagram
 - [docs/mcp-tools.md](docs/mcp-tools.md): full tool contracts and examples
 - [docs/pose-table.md](docs/pose-table.md): pose semantics and reference poses
+- [docs/kinematics.md](docs/kinematics.md): FK/IK setup and Cartesian conventions
 - [docs/operations.md](docs/operations.md): safe operating workflow
 - [docs/testing.md](docs/testing.md): validation commands and expected results
 - [docs/troubleshooting.md](docs/troubleshooting.md): common hardware and camera issues
@@ -216,7 +255,9 @@ Working and tested:
 - Feetech servo probe for IDs `1..6`
 - calibrated robot connection
 - six-joint observation
-- absolute no-op `move_pose` test
+- absolute no-op `set_arm_pose` / `move_pose` test
+- repo-local SO-101 URDF loading through `placo`
+- FK smoke test for `get_position`
 - incremental real movement through `move_pose`
 
 Known limitation:

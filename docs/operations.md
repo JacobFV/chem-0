@@ -7,7 +7,8 @@ Use this as the default operating sequence for an agent controlling the arm.
 ```text
 Use the chem-0 MCP. Read lerobot://pose-table, list cameras, view camera 0,
 probe the LeRobot servos, connect to the SO101 arm, observe the current pose,
-then only use move_pose with max_step <= 5 and poses inside calibrated limits.
+then use get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
+for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 ```
 
 ## Safe Startup Sequence
@@ -18,8 +19,9 @@ then only use move_pose with max_step <= 5 and poses inside calibrated limits.
 4. `probe_feetech` on `/dev/cu.usbmodem5AB01815731` with `max_id: 6`.
 5. Confirm IDs `1..6` respond.
 6. `connect_so101`.
-7. `observe`.
-8. Move only with `move_pose` unless doing tiny manual nudges.
+7. `observe`, then `get_arm_pose`.
+8. Move with `set_arm_pose` for joint-space commands or `set_position` for
+   Cartesian IK commands. Use `move_pose` only as the legacy alias.
 9. `disconnect` at the end.
 
 ## Motion Guidance
@@ -30,6 +32,16 @@ Prefer:
 {
   "max_step": 5,
   "allow_out_of_range": false
+}
+```
+
+For Cartesian IK, also prefer:
+
+```json
+{
+  "tolerance_m": 0.004,
+  "max_position_error_m": 0.03,
+  "allow_out_of_workspace": false
 }
 ```
 

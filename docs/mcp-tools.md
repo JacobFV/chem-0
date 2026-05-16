@@ -1,7 +1,7 @@
 # MCP Tools
 
-`chem-0` exposes a compact stdio MCP interface for camera viewing and robot
-control.
+`chem-0` exposes a compact stdio MCP interface for camera viewing, joint-space
+robot control, and bounded Cartesian IK.
 
 ## Discovery
 
@@ -83,7 +83,7 @@ Connects the calibrated follower arm.
 
 ### `observe`
 
-Reads current normalized LeRobot joint positions.
+Reads raw current normalized LeRobot observation fields.
 
 ```json
 {}
@@ -98,6 +98,20 @@ elbow_flex.pos
 wrist_flex.pos
 wrist_roll.pos
 gripper.pos
+```
+
+### `get_arm_pose`
+
+Returns the current six-joint pose as both a named object and ordered tuple.
+
+```json
+{}
+```
+
+Tuple order:
+
+```text
+shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper
 ```
 
 ### `disconnect`
@@ -126,9 +140,9 @@ lerobot://pose-table
 
 ## Motion
 
-### `move_pose`
+### `set_arm_pose`
 
-Preferred full-arm motion primitive. Requires all six joint values.
+Preferred full-arm joint-space motion primitive. Requires all six joint values.
 
 ```json
 {
@@ -150,6 +164,78 @@ Preferred full-arm motion primitive. Requires all six joint values.
 By default, out-of-range poses are rejected and movement is interpolated in
 small steps.
 
+### `move_pose`
+
+Backward-compatible alias for `set_arm_pose`.
+
+## Cartesian IK
+
+### `get_position`
+
+Computes FK for the current joint pose and returns `[x, y, z, gripper]`.
+`x/y/z` are meters in the SO-101 URDF base frame.
+
+```json
+{}
+```
+
+Optional fields:
+
+```json
+{
+  "urdf_path": "assets/kinematics/so101_kinematics.urdf",
+  "target_frame": "gripper_frame_link"
+}
+```
+
+### `set_position`
+
+Solves IK for an end-effector target, then sends the resulting six-joint pose
+through the same validation and interpolation path as `set_arm_pose`.
+
+```json
+{
+  "x": 0.18,
+  "y": 0.02,
+  "z": 0.45,
+  "gripper": 20,
+  "max_step": 5,
+  "tolerance_m": 0.004,
+  "max_position_error_m": 0.03,
+  "allow_out_of_workspace": false,
+  "allow_out_of_range": false
+}
+```
+
+Default workspace:
+
+```text
+x: -0.35..0.35 m
+y: -0.35..0.35 m
+z:  0.02..0.60 m
+```
+
+The solver is position-only IK. It uses damped least squares over LeRobot FK,
+then rejects the move if the final IK error is above `max_position_error_m`.
+
+### `open_gripper`
+
+Sets only the gripper joint to the calibrated open value while holding the
+other joints.
+
+```json
+{}
+```
+
+### `close_gripper`
+
+Sets only the gripper joint to the calibrated close value while holding the
+other joints.
+
+```json
+{}
+```
+
 ### `move_relative`
 
 Small nudge primitive.
@@ -164,4 +250,4 @@ Small nudge primitive.
 }
 ```
 
-Prefer `move_pose` when reproducibility matters.
+Prefer `set_arm_pose` or `set_position` when reproducibility matters.

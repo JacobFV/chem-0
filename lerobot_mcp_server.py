@@ -17,6 +17,7 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -25,6 +26,10 @@ DEFAULT_MAX_DELTA = 5.0
 DEFAULT_PORT = "/dev/cu.usbmodem5AB01815731"
 DEFAULT_ROBOT_ID = "mcp_so101"
 POSE_TABLE_URI = "lerobot://pose-table"
+DEFAULT_URDF_PATH = Path(__file__).resolve().parent / "assets" / "kinematics" / "so101_kinematics.urdf"
+DEFAULT_TARGET_FRAME = "gripper_frame_link"
+DEFAULT_OPEN_GRIPPER = 0.0
+DEFAULT_CLOSE_GRIPPER = 100.0
 
 JOINTS = [
     "shoulder_pan",
@@ -34,6 +39,7 @@ JOINTS = [
     "wrist_roll",
     "gripper",
 ]
+ARM_JOINTS = JOINTS[:-1]
 
 # Normalized limits derived from the saved calibration for mcp_so101. The first
 # five joints are degrees; gripper is 0..100.
@@ -44,6 +50,15 @@ JOINT_LIMITS = {
     "wrist_flex": (-103.99, 103.99),
     "wrist_roll": (-180.0, 180.0),
     "gripper": (0.0, 100.0),
+}
+
+# Conservative default bounds for the SO-101 end-effector frame in URDF base
+# coordinates, in meters. These are intentionally smaller than the theoretical
+# reach and can be overridden per call only with allow_out_of_workspace=true.
+CARTESIAN_BOUNDS = {
+    "x": (-0.35, 0.35),
+    "y": (-0.35, 0.35),
+    "z": (0.02, 0.60),
 }
 
 POSE_TABLE = {
@@ -214,6 +229,16 @@ def pose_table_payload() -> dict[str, Any]:
     return {
         "robot_id": DEFAULT_ROBOT_ID,
         "default_port": DEFAULT_PORT,
+        "kinematics": {
+            "urdf_path": str(DEFAULT_URDF_PATH),
+            "target_frame": DEFAULT_TARGET_FRAME,
+            "cartesian_units": "meters",
+            "cartesian_bounds": CARTESIAN_BOUNDS,
+            "cartesian_tuple_order": ["x", "y", "z", "gripper"],
+            "arm_pose_tuple_order": JOINTS,
+            "open_gripper": DEFAULT_OPEN_GRIPPER,
+            "close_gripper": DEFAULT_CLOSE_GRIPPER,
+        },
         "units": {
             "shoulder_pan": "degrees",
             "shoulder_lift": "degrees",
@@ -238,6 +263,8 @@ def pose_table_markdown() -> str:
         "",
         "Joint order: `shoulder_pan`, `shoulder_lift`, `elbow_flex`, `wrist_flex`, `wrist_roll`, `gripper`.",
         "",
+        "Cartesian position order: `x`, `y`, `z`, `gripper`; meters for `x/y/z`, percent 0..100 for `gripper`.",
+        "",
         "## Joint Limits",
         "",
         "| Joint | Min | Max | Unit |",
@@ -246,6 +273,10 @@ def pose_table_markdown() -> str:
     for joint in JOINTS:
         lo, hi = JOINT_LIMITS[joint]
         lines.append(f"| `{joint}` | {lo:.2f} | {hi:.2f} | {payload['units'][joint]} |")
+
+    lines.extend(["", "## Cartesian Bounds", "", "| Axis | Min | Max | Unit |", "| --- | ---: | ---: | --- |"])
+    for axis, (lo, hi) in CARTESIAN_BOUNDS.items():
+        lines.append(f"| `{axis}` | {lo:.3f} | {hi:.3f} | meters |")
 
     lines.extend(["", "## Common Poses", "", "| Name | shoulder_pan | shoulder_lift | elbow_flex | wrist_flex | wrist_roll | gripper | Notes |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |"])
     for name, entry in POSE_TABLE.items():
@@ -293,8 +324,192 @@ def validate_pose(raw_pose: Any, allow_out_of_range: bool = False) -> dict[str, 
     return pose
 
 
+def arm_pose_from_observation(observation: dict[str, Any]) -> dict[str, float]:
+    return {joint: float(observation[f"{joint}.pos"]) for joint in JOINTS}
+
+
+def arm_pose_tuple(pose: dict[str, float]) -> list[float]:
+    return [float(pose[joint]) for joint in JOINTS]
+
+
+def arm_array(pose: dict[str, float]) -> Any:
+    import numpy as np
+
+    return np.array([pose[joint] for joint in ARM_JOINTS], dtype=float)
+
+
 def action_from_pose(pose: dict[str, float]) -> dict[str, float]:
     return {f"{joint}.pos": value for joint, value in pose.items()}
+
+
+def validate_position(x: float, y: float, z: float, allow_out_of_workspace: bool = False) -> dict[str, float]:
+    position = {"x": float(x), "y": float(y), "z": float(z)}
+    if allow_out_of_workspace:
+        return position
+
+    violations = []
+    for axis, value in position.items():
+        lo, hi = CARTESIAN_BOUNDS[axis]
+        if value < lo or value > hi:
+            violations.append(f"{axis}={value:.4f} outside [{lo:.4f}, {hi:.4f}]")
+    if violations:
+        raise ValueError("Position outside conservative workspace: " + "; ".join(violations))
+    return position
+
+
+def get_kinematics(urdf_path: str | None = None, target_frame: str | None = None) -> Any:
+    from lerobot.model.kinematics import RobotKinematics
+
+    resolved_urdf = str(Path(urdf_path or STATE.urdf_path or DEFAULT_URDF_PATH).expanduser().resolve())
+    resolved_target = target_frame or STATE.target_frame or DEFAULT_TARGET_FRAME
+
+    if not Path(resolved_urdf).exists():
+        raise FileNotFoundError(f"URDF not found: {resolved_urdf}")
+
+    if (
+        STATE.kinematics is None
+        or STATE.urdf_path != resolved_urdf
+        or STATE.target_frame != resolved_target
+    ):
+        STATE.kinematics = RobotKinematics(
+            urdf_path=resolved_urdf,
+            target_frame_name=resolved_target,
+            joint_names=ARM_JOINTS,
+        )
+        STATE.urdf_path = resolved_urdf
+        STATE.target_frame = resolved_target
+
+    return STATE.kinematics
+
+
+def forward_kinematics_for_pose(pose: dict[str, float], urdf_path: str | None = None, target_frame: str | None = None) -> Any:
+    return get_kinematics(urdf_path, target_frame).forward_kinematics(arm_array(pose))
+
+
+def forward_kinematics_for_arm_array(q: Any, urdf_path: str | None = None, target_frame: str | None = None) -> Any:
+    return get_kinematics(urdf_path, target_frame).forward_kinematics(q)
+
+
+def rotation_vector_from_matrix(matrix: Any) -> list[float]:
+    from lerobot.utils.rotation import Rotation
+
+    return [float(v) for v in Rotation.from_matrix(matrix[:3, :3]).as_rotvec()]
+
+
+def solve_position_ik(
+    start_pose: dict[str, float],
+    target_xyz: dict[str, float],
+    urdf_path: str | None = None,
+    target_frame: str | None = None,
+    tolerance_m: float = 0.004,
+    max_iterations: int = 120,
+    damping: float = 0.005,
+    max_joint_step_deg: float = 5.0,
+) -> dict[str, Any]:
+    import numpy as np
+
+    q = arm_array(start_pose)
+    target = np.array([target_xyz["x"], target_xyz["y"], target_xyz["z"]], dtype=float)
+    limits = np.array([JOINT_LIMITS[joint] for joint in ARM_JOINTS], dtype=float)
+    kinematics = get_kinematics(urdf_path, target_frame)
+    last_error = None
+
+    for iteration in range(max_iterations + 1):
+        pos = kinematics.forward_kinematics(q)[:3, 3]
+        error = target - pos
+        error_norm = float(np.linalg.norm(error))
+        last_error = error_norm
+        if error_norm <= tolerance_m:
+            break
+        if iteration == max_iterations:
+            break
+
+        jacobian = np.zeros((3, len(q)), dtype=float)
+        eps_deg = 0.5
+        for i in range(len(q)):
+            qp = q.copy()
+            qm = q.copy()
+            qp[i] = min(limits[i, 1], qp[i] + eps_deg)
+            qm[i] = max(limits[i, 0], qm[i] - eps_deg)
+            if qp[i] == qm[i]:
+                continue
+            pp = kinematics.forward_kinematics(qp)[:3, 3]
+            pm = kinematics.forward_kinematics(qm)[:3, 3]
+            jacobian[:, i] = (pp - pm) / (qp[i] - qm[i])
+
+        lhs = jacobian @ jacobian.T + (damping * damping) * np.eye(3)
+        dq = jacobian.T @ np.linalg.solve(lhs, error)
+        largest_step = float(np.max(np.abs(dq)))
+        if largest_step > max_joint_step_deg:
+            dq *= max_joint_step_deg / largest_step
+        q = np.clip(q + dq, limits[:, 0], limits[:, 1])
+
+    solved_pose = dict(start_pose)
+    for i, joint in enumerate(ARM_JOINTS):
+        solved_pose[joint] = float(q[i])
+
+    final_transform = kinematics.forward_kinematics(q)
+    final_xyz = [float(v) for v in final_transform[:3, 3]]
+    return {
+        "pose": solved_pose,
+        "tuple": arm_pose_tuple(solved_pose),
+        "iterations": iteration,
+        "position_error_m": float(last_error if last_error is not None else 0.0),
+        "final_xyz": final_xyz,
+        "target_xyz": [float(v) for v in target],
+        "tolerance_m": float(tolerance_m),
+    }
+
+
+def perform_set_arm_pose(args: dict[str, Any]) -> dict[str, Any]:
+    if not STATE.connected:
+        raise RuntimeError("Robot is not connected. Call connect_so101 first.")
+
+    pose = validate_pose(args.get("pose"), bool(args.get("allow_out_of_range", False)))
+    max_step = max(0.5, min(20.0, float(args.get("max_step", STATE.max_delta))))
+    hold_seconds = max(0.0, min(5.0, float(args.get("hold_seconds", 0.35))))
+    settle_seconds = max(0.0, min(5.0, float(args.get("settle_seconds", 0.5))))
+
+    start = observe_retry()
+    steps: list[dict[str, float]] = []
+
+    for _ in range(200):
+        current = observe_retry()
+        next_pose: dict[str, float] = {}
+        done = True
+
+        for joint in JOINTS:
+            key = f"{joint}.pos"
+            cur = float(current[key])
+            target = pose[joint]
+            diff = target - cur
+            if abs(diff) > 0.75:
+                done = False
+            next_pose[joint] = cur + max(-max_step, min(max_step, diff))
+
+        if done:
+            break
+
+        sent = STATE.robot.send_action(action_from_pose(next_pose))
+        steps.append({key.removesuffix(".pos"): value for key, value in sent.items()})
+        time.sleep(hold_seconds)
+    else:
+        raise RuntimeError("set_arm_pose exceeded 200 interpolation steps before reaching target.")
+
+    time.sleep(settle_seconds)
+    final = observe_retry()
+    return {
+        "start": start,
+        "start_pose": arm_pose_from_observation(start),
+        "start_tuple": arm_pose_tuple(arm_pose_from_observation(start)),
+        "target_pose": pose,
+        "target_tuple": arm_pose_tuple(pose),
+        "final": final,
+        "final_pose": arm_pose_from_observation(final),
+        "final_tuple": arm_pose_tuple(arm_pose_from_observation(final)),
+        "steps": len(steps),
+        "last_sent": steps[-1] if steps else None,
+    }
 
 
 @dataclass
@@ -302,6 +517,9 @@ class RobotState:
     robot: Any = None
     port: str | None = None
     max_delta: float = DEFAULT_MAX_DELTA
+    kinematics: Any = None
+    urdf_path: str = str(DEFAULT_URDF_PATH)
+    target_frame: str = DEFAULT_TARGET_FRAME
 
     @property
     def connected(self) -> bool:
@@ -411,7 +629,12 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "observe",
-        "description": "Read current joint positions from the connected robot.",
+        "description": "Read raw current LeRobot observation fields from the connected robot.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_arm_pose",
+        "description": "Return the current six-joint arm pose as both a named object and ordered 6-tuple.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -420,9 +643,24 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
-        "name": "move_pose",
+        "name": "get_position",
         "description": (
-            "Move the connected robot to an absolute six-parameter pose. Values are LeRobot normalized "
+            "Return the current Cartesian end-effector position from FK as [x, y, z, gripper]. "
+            "Coordinates are meters in the SO-101 URDF base frame."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "urdf_path": {"type": "string", "description": "Optional URDF path. Defaults to the repo-local SO101 kinematic URDF."},
+                "target_frame": {"type": "string", "default": DEFAULT_TARGET_FRAME},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_arm_pose",
+        "description": (
+            "Move the connected robot to an absolute six-parameter arm pose. Values are LeRobot normalized "
             "units: degrees for arm joints and 0..100 for gripper. Requires all six joints."
         ),
         "inputSchema": {
@@ -469,6 +707,101 @@ TOOLS: list[dict[str, Any]] = [
                 },
             },
             "required": ["pose"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "move_pose",
+        "description": "Backward-compatible alias for set_arm_pose.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pose": {
+                    "type": "object",
+                    "properties": {
+                        "shoulder_pan": {"type": "number"},
+                        "shoulder_lift": {"type": "number"},
+                        "elbow_flex": {"type": "number"},
+                        "wrist_flex": {"type": "number"},
+                        "wrist_roll": {"type": "number"},
+                        "gripper": {"type": "number"},
+                    },
+                    "required": JOINTS,
+                    "additionalProperties": False,
+                },
+                "max_step": {"type": "number", "minimum": 0.5, "maximum": 20, "default": DEFAULT_MAX_DELTA},
+                "hold_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.35},
+                "settle_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.5},
+                "allow_out_of_range": {"type": "boolean", "default": False},
+            },
+            "required": ["pose"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_position",
+        "description": (
+            "Move the end-effector to Cartesian x/y/z in meters using position-only IK over LeRobot FK, "
+            "optionally setting gripper."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "x": {"type": "number"},
+                "y": {"type": "number"},
+                "z": {"type": "number"},
+                "gripper": {"type": "number", "minimum": 0, "maximum": 100},
+                "urdf_path": {"type": "string", "description": "Optional URDF path. Defaults to the repo-local SO101 kinematic URDF."},
+                "target_frame": {"type": "string", "default": DEFAULT_TARGET_FRAME},
+                "tolerance_m": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 0.05,
+                    "default": 0.004,
+                    "description": "Target Cartesian error tolerance before the IK loop stops.",
+                },
+                "max_position_error_m": {
+                    "type": "number",
+                    "minimum": 0.001,
+                    "maximum": 0.10,
+                    "default": 0.03,
+                    "description": "Reject the move if IK cannot get this close to the requested position.",
+                },
+                "max_step": {"type": "number", "minimum": 0.5, "maximum": 20, "default": DEFAULT_MAX_DELTA},
+                "hold_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.35},
+                "settle_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.5},
+                "allow_out_of_workspace": {"type": "boolean", "default": False},
+                "allow_out_of_range": {"type": "boolean", "default": False},
+            },
+            "required": ["x", "y", "z"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "open_gripper",
+        "description": "Open the gripper by setting the gripper joint to the calibrated open value while holding other joints.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "value": {"type": "number", "minimum": 0, "maximum": 100, "default": DEFAULT_OPEN_GRIPPER},
+                "max_step": {"type": "number", "minimum": 0.5, "maximum": 20, "default": DEFAULT_MAX_DELTA},
+                "hold_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.35},
+                "settle_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.5},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "close_gripper",
+        "description": "Close the gripper by setting the gripper joint to the calibrated close value while holding other joints.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "value": {"type": "number", "minimum": 0, "maximum": 100, "default": DEFAULT_CLOSE_GRIPPER},
+                "max_step": {"type": "number", "minimum": 0.5, "maximum": 20, "default": DEFAULT_MAX_DELTA},
+                "hold_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.35},
+                "settle_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.5},
+            },
             "additionalProperties": False,
         },
     },
@@ -600,56 +933,162 @@ def observe(_: dict[str, Any]) -> dict[str, Any]:
     return _tool_json(observe_retry())
 
 
+def get_arm_pose(_: dict[str, Any]) -> dict[str, Any]:
+    if not STATE.connected:
+        return _tool_error("Robot is not connected. Call connect_so101 first.")
+
+    observation = observe_retry()
+    pose = arm_pose_from_observation(observation)
+    return _tool_json(
+        {
+            "pose": pose,
+            "tuple": arm_pose_tuple(pose),
+            "tuple_order": JOINTS,
+            "units": pose_table_payload()["units"],
+            "raw_observation": observation,
+        }
+    )
+
+
 def get_pose_table(_: dict[str, Any]) -> dict[str, Any]:
     return _tool_json(pose_table_payload())
 
 
-def move_pose(args: dict[str, Any]) -> dict[str, Any]:
+def get_position(args: dict[str, Any]) -> dict[str, Any]:
     if not STATE.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
 
-    pose = validate_pose(args.get("pose"), bool(args.get("allow_out_of_range", False)))
-    max_step = max(0.5, min(20.0, float(args.get("max_step", STATE.max_delta))))
-    hold_seconds = max(0.0, min(5.0, float(args.get("hold_seconds", 0.35))))
-    settle_seconds = max(0.0, min(5.0, float(args.get("settle_seconds", 0.5))))
-
-    start = observe_retry()
-    steps: list[dict[str, float]] = []
-
-    for _ in range(200):
-        current = observe_retry()
-        next_pose: dict[str, float] = {}
-        done = True
-
-        for joint in JOINTS:
-            key = f"{joint}.pos"
-            cur = float(current[key])
-            target = pose[joint]
-            diff = target - cur
-            if abs(diff) > 0.75:
-                done = False
-            next_pose[joint] = cur + max(-max_step, min(max_step, diff))
-
-        if done:
-            break
-
-        sent = STATE.robot.send_action(action_from_pose(next_pose))
-        steps.append({key.removesuffix(".pos"): value for key, value in sent.items()})
-        time.sleep(hold_seconds)
-    else:
-        return _tool_error("move_pose exceeded 200 interpolation steps before reaching target.")
-
-    time.sleep(settle_seconds)
-    final = observe_retry()
+    observation = observe_retry()
+    pose = arm_pose_from_observation(observation)
+    transform = forward_kinematics_for_pose(pose, args.get("urdf_path"), args.get("target_frame"))
+    position = [float(v) for v in transform[:3, 3]]
+    gripper = float(pose["gripper"])
     return _tool_json(
         {
-            "start": start,
-            "target_pose": pose,
-            "final": final,
-            "steps": len(steps),
-            "last_sent": steps[-1] if steps else None,
+            "position": {"x": position[0], "y": position[1], "z": position[2], "gripper": gripper},
+            "tuple": [position[0], position[1], position[2], gripper],
+            "tuple_order": ["x", "y", "z", "gripper"],
+            "units": {"x": "meters", "y": "meters", "z": "meters", "gripper": "percent_0_to_100"},
+            "frame": STATE.target_frame,
+            "urdf_path": STATE.urdf_path,
+            "orientation_rotvec": rotation_vector_from_matrix(transform),
+            "arm_pose": pose,
+            "arm_tuple": arm_pose_tuple(pose),
         }
     )
+
+
+def set_arm_pose(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return _tool_json(perform_set_arm_pose(args))
+    except Exception as exc:
+        return _tool_error(str(exc))
+
+
+def move_pose(args: dict[str, Any]) -> dict[str, Any]:
+    return set_arm_pose(args)
+
+
+def set_position(args: dict[str, Any]) -> dict[str, Any]:
+    if not STATE.connected:
+        return _tool_error("Robot is not connected. Call connect_so101 first.")
+
+    try:
+        target_position = validate_position(
+            float(args["x"]),
+            float(args["y"]),
+            float(args["z"]),
+            bool(args.get("allow_out_of_workspace", False)),
+        )
+
+        observation = observe_retry()
+        start_pose = arm_pose_from_observation(observation)
+        ik = solve_position_ik(
+            start_pose,
+            target_position,
+            urdf_path=args.get("urdf_path"),
+            target_frame=args.get("target_frame"),
+            tolerance_m=max(0.0, min(0.05, float(args.get("tolerance_m", 0.004)))),
+        )
+
+        max_position_error_m = max(0.001, min(0.10, float(args.get("max_position_error_m", 0.03))))
+        if ik["position_error_m"] > max_position_error_m:
+            return _tool_error(
+                "IK did not converge inside max_position_error_m: "
+                f"error={ik['position_error_m']:.4f}m, max={max_position_error_m:.4f}m, "
+                f"best_pose={ik['pose']}"
+            )
+
+        target_pose = dict(ik["pose"])
+        if "gripper" in args:
+            target_pose["gripper"] = float(args["gripper"])
+
+        validate_pose(target_pose, bool(args.get("allow_out_of_range", False)))
+        result = perform_set_arm_pose({**args, "pose": target_pose})
+        final_pose = result["final_pose"]
+        final_transform = forward_kinematics_for_pose(final_pose, STATE.urdf_path, STATE.target_frame)
+        final_position = [float(v) for v in final_transform[:3, 3]]
+        import numpy as np
+
+        result.update(
+            {
+                "requested_position": {
+                    "x": target_position["x"],
+                    "y": target_position["y"],
+                    "z": target_position["z"],
+                    "gripper": target_pose["gripper"],
+                },
+                "requested_tuple": [
+                    target_position["x"],
+                    target_position["y"],
+                    target_position["z"],
+                    target_pose["gripper"],
+                ],
+                "requested_tuple_order": ["x", "y", "z", "gripper"],
+                "ik_target_pose": target_pose,
+                "ik_target_tuple": arm_pose_tuple(target_pose),
+                "ik": ik,
+                "final_position": {
+                    "x": final_position[0],
+                    "y": final_position[1],
+                    "z": final_position[2],
+                    "gripper": final_pose["gripper"],
+                },
+                "final_position_tuple": [final_position[0], final_position[1], final_position[2], final_pose["gripper"]],
+                "position_error_m": float(
+                    np.linalg.norm(
+                        final_transform[:3, 3]
+                        - np.array([target_position["x"], target_position["y"], target_position["z"]], dtype=float)
+                    )
+                ),
+                "frame": STATE.target_frame,
+                "urdf_path": STATE.urdf_path,
+            }
+        )
+        return _tool_json(result)
+    except Exception as exc:
+        return _tool_error(str(exc))
+
+
+def set_gripper(args: dict[str, Any], value: float) -> dict[str, Any]:
+    if not STATE.connected:
+        return _tool_error("Robot is not connected. Call connect_so101 first.")
+
+    try:
+        observation = observe_retry()
+        pose = arm_pose_from_observation(observation)
+        pose["gripper"] = max(JOINT_LIMITS["gripper"][0], min(JOINT_LIMITS["gripper"][1], float(args.get("value", value))))
+        return _tool_json(perform_set_arm_pose({**args, "pose": pose}))
+    except Exception as exc:
+        return _tool_error(str(exc))
+
+
+def open_gripper(args: dict[str, Any]) -> dict[str, Any]:
+    return set_gripper(args, DEFAULT_OPEN_GRIPPER)
+
+
+def close_gripper(args: dict[str, Any]) -> dict[str, Any]:
+    return set_gripper(args, DEFAULT_CLOSE_GRIPPER)
 
 
 def move_relative(args: dict[str, Any]) -> dict[str, Any]:
@@ -691,6 +1130,7 @@ def disconnect(_: dict[str, Any]) -> dict[str, Any]:
         STATE.robot.disconnect()
     STATE.robot = None
     STATE.port = None
+    STATE.kinematics = None
     return _tool_json({"disconnected": was_connected})
 
 
@@ -701,8 +1141,14 @@ HANDLERS = {
     "probe_feetech": probe_feetech,
     "connect_so101": connect_so101,
     "observe": observe,
+    "get_arm_pose": get_arm_pose,
     "get_pose_table": get_pose_table,
+    "get_position": get_position,
+    "set_arm_pose": set_arm_pose,
     "move_pose": move_pose,
+    "set_position": set_position,
+    "open_gripper": open_gripper,
+    "close_gripper": close_gripper,
     "move_relative": move_relative,
     "disconnect": disconnect,
 }

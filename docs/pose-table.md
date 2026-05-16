@@ -14,7 +14,8 @@ get_pose_table
 
 ## Joint Order
 
-`move_pose` requires exactly these six values:
+`set_arm_pose` and its backward-compatible alias `move_pose` require exactly
+these six values:
 
 ```text
 shoulder_pan
@@ -46,6 +47,28 @@ gripper
 | `wrist_flex` | -103.99 | 103.99 |
 | `wrist_roll` | -180.00 | 180.00 |
 | `gripper` | 0.00 | 100.00 |
+
+## Cartesian Tuple
+
+`get_position` returns this four-value tuple:
+
+```text
+x
+y
+z
+gripper
+```
+
+`x/y/z` are meters in the SO-101 URDF base frame. `gripper` is still percent
+`0..100`.
+
+Default conservative workspace:
+
+| Axis | Min | Max | Unit |
+| --- | ---: | ---: | --- |
+| `x` | -0.350 | 0.350 | meters |
+| `y` | -0.350 | 0.350 | meters |
+| `z` | 0.020 | 0.600 | meters |
 
 ## Orientation Notes
 
@@ -100,5 +123,7 @@ shoulder_lift around -96 overshot past upright
 
 ## Safety Rule
 
-Agents should read the pose table before movement and should use `move_pose`
-with `allow_out_of_range: false`.
+Agents should read the pose table before movement. Use `set_arm_pose` for
+joint-space movement and `set_position` for Cartesian IK movement. Keep
+`allow_out_of_range: false` and `allow_out_of_workspace: false` unless a human
+explicitly approves otherwise.

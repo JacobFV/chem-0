@@ -11,7 +11,8 @@ Read these files before operating hardware:
 2. `docs/setup.md`
 3. `docs/operations.md`
 4. `docs/pose-table.md`
-5. `docs/troubleshooting.md`
+5. `docs/kinematics.md`
+6. `docs/troubleshooting.md`
 
 ## Known Local Defaults
 
@@ -59,13 +60,15 @@ Calibration file:
 5. Confirm servo IDs `1..6`, model `777`, baud `1000000`.
 6. `connect_so101`.
 7. `observe`.
-8. Move with `move_pose`, not large relative deltas.
-9. Keep `max_step <= 5` unless a human explicitly approves otherwise.
-10. `disconnect`.
+8. `get_arm_pose`.
+9. Move with `set_arm_pose` for joint-space control or `set_position` for IK.
+10. Use `move_pose` only as the legacy alias for `set_arm_pose`.
+11. Keep `max_step <= 5` unless a human explicitly approves otherwise.
+12. `disconnect`.
 
-## Preferred Motion Tool
+## Preferred Joint-Space Motion Tool
 
-Use `move_pose`:
+Use `set_arm_pose`:
 
 ```json
 {
@@ -83,6 +86,28 @@ Use `move_pose`:
 ```
 
 All six pose values are required.
+
+## Cartesian IK Tools
+
+Use `get_position` to read `[x, y, z, gripper]` in meters plus percent gripper.
+Use `set_position` for bounded IK moves:
+
+```json
+{
+  "x": 0.18,
+  "y": 0.02,
+  "z": 0.45,
+  "gripper": 20,
+  "max_step": 5,
+  "tolerance_m": 0.004,
+  "max_position_error_m": 0.03,
+  "allow_out_of_workspace": false,
+  "allow_out_of_range": false
+}
+```
+
+The server uses `assets/kinematics/so101_kinematics.urdf` with LeRobot's
+`RobotKinematics` and `placo`.
 
 ## Critical Spatial Note
 

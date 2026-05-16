@@ -42,8 +42,13 @@ Create and install:
 ```sh
 python -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install 'lerobot[feetech]'
+./scripts/install_deps.sh
 ```
+
+`requirements.txt` stays resolver-clean with `lerobot[feetech]`. The install
+script then installs `placo==0.9.20` for kinematics and restores NumPy to
+LeRobot's supported `<2.3` range. It also refreshes the Pinocchio/Coal shared
+library wheels used by `placo`.
 
 Run:
 

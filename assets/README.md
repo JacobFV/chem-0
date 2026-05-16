@@ -9,3 +9,11 @@ assets/robot_lab_scene.png
 ```
 
 The current welcome image is a PNG at 1536 x 1024.
+
+Kinematic robot models live under:
+
+```text
+assets/kinematics/
+```
+
+`so101_kinematics.urdf` is a minimal FK/IK model for the MCP server.

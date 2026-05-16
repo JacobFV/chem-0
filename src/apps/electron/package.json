@@ -1,5 +1,7 @@
 {
   "name": "@chem0/electron",
+  "productName": "Chem-0 Lab Console",
+  "description": "Local LeRobot experiment console backed by chem-0.",
   "version": "0.1.0",
   "private": true,
   "main": "dist/main/main.js",

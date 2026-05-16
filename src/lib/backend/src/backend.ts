@@ -1,6 +1,8 @@
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
 import path from "node:path";
 import OpenAI from "openai";
+import { AudioService } from "./audio";
 import { PythonBridge } from "./pythonBridge";
 import { Chem0Store } from "./store";
 import type { Experiment, JsonObject } from "./types";
@@ -11,11 +13,13 @@ const MAX_AGENT_STEPS = 8;
 export class Chem0Backend extends EventEmitter {
   readonly store: Chem0Store;
   readonly bridge: PythonBridge;
+  readonly audio: AudioService;
   private initialized = false;
 
   constructor(readonly repoRoot: string, dataDir = path.join(repoRoot, "data")) {
     super();
     this.store = new Chem0Store(repoRoot, dataDir);
+    this.audio = new AudioService(dataDir);
     this.bridge = new PythonBridge(repoRoot);
     this.bridge.on("stderr", (text) => this.emit("stderr", text));
   }
@@ -82,7 +86,7 @@ export class Chem0Backend extends EventEmitter {
     if (experimentId) {
       this.store.appendEvent({ experimentId, type: "tool_call", name, content: { arguments: cleanArgs } });
     }
-    const result = await this.bridge.request("tools/call", { name, arguments: cleanArgs });
+    const result = await this.executeTool(name, cleanArgs);
     if (experimentId) {
       const enriched = this.persistArtifacts(experimentId, name, result);
       this.store.appendEvent({ experimentId, type: "tool_response", name, content: enriched });
@@ -130,7 +134,7 @@ export class Chem0Backend extends EventEmitter {
     try {
       let text = "";
       const instructions =
-        "You are controlling a local LeRobot experiment through chem-0. Use tools when hardware state, camera state, or arm motion is required. Keep motions conservative and prefer known pose-table references. When you observe a universal-indicator color in a camera frame, estimate the pH and call record_ph(value) so the operator's real-time chart updates.";
+        "You are controlling a local LeRobot experiment through chem-0. Use tools when hardware state, camera state, arm motion, or human voice interaction is required. Use speak_to_human to talk out loud. Treat listen_to_human transcripts as human messages. When you observe a universal-indicator color in a camera frame, estimate the pH and call record_ph(value) so the operator's real-time chart updates. Keep motions conservative and prefer known pose-table references.";
       let nextInput: unknown = this.sessionMessages(input.experimentId, sessionId);
       let previousResponseId: string | undefined;
       const tools = await this.openAiTools();
@@ -259,8 +263,29 @@ export class Chem0Backend extends EventEmitter {
       );
       artifacts.push(artifact);
     }
+    const audio = result.audio;
+    if (audio && typeof audio === "object" && !Array.isArray(audio)) {
+      const audioObject = audio as JsonObject;
+      if (typeof audioObject.absolute_path === "string") {
+        const mimeType = typeof audioObject.mime_type === "string" ? audioObject.mime_type : "application/octet-stream";
+        const artifact = this.store.writeArtifact(
+          experimentId,
+          "tool_audio",
+          mimeType,
+          fs.readFileSync(audioObject.absolute_path),
+          { tool: toolName }
+        );
+        artifacts.push(artifact);
+      }
+    }
     if (artifacts.length === 0) return result;
     return { ...result, artifacts };
+  }
+
+  private async executeTool(name: string, args: JsonObject): Promise<JsonObject> {
+    if (name === "speak_to_human") return this.audio.speakToHuman(args);
+    if (name === "listen_to_human") return this.audio.listenToHuman(args);
+    return this.bridge.request("tools/call", { name, arguments: args });
   }
 
   private withExperimentId(tool: JsonObject): JsonObject {
@@ -330,6 +355,41 @@ export class Chem0Backend extends EventEmitter {
             note: { type: "string" }
           },
           required: ["value"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "speak_to_human",
+        description:
+          "Speak a short message to the nearby human. Uses ElevenLabs when ELEVENLABS_API_KEY is configured, or macOS system speech with provider: system.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string", description: "The exact message to speak aloud." },
+            provider: { type: "string", enum: ["elevenlabs", "system"], default: "elevenlabs" },
+            voice_id: { type: "string", description: "Optional ElevenLabs voice id." },
+            model_id: { type: "string", description: "Optional ElevenLabs model id." },
+            play: { type: "boolean", default: true },
+            experiment_id: { type: "string" }
+          },
+          required: ["text"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "listen_to_human",
+        description:
+          "Transcribe human speech from an audio file or Electron-recorded audio clip. Requires OPENAI_API_KEY.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            audio_path: { type: "string", description: "Local audio file path visible to the backend process." },
+            audio_base64: { type: "string", description: "Base64 audio payload, primarily used by the Electron recorder." },
+            mime_type: { type: "string", default: "audio/webm" },
+            language: { type: "string" },
+            model: { type: "string", default: "gpt-4o-mini-transcribe" },
+            experiment_id: { type: "string" }
+          },
           additionalProperties: false
         }
       }

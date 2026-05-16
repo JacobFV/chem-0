@@ -1,10 +1,53 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import path from "node:path";
 import { Chem0Backend, type JsonObject } from "@chem0/backend";
 
 const repoRoot = path.resolve(__dirname, "../../../../..");
 const backend = new Chem0Backend(repoRoot);
 const windows = new Set<BrowserWindow>();
+const APP_NAME = "Chem-0 Lab Console";
+
+app.setName(APP_NAME);
+
+function installApplicationMenu(): void {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: APP_NAME,
+      submenu: [
+        { role: "about", label: `About ${APP_NAME}` },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide", label: `Hide ${APP_NAME}` },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit", label: `Quit ${APP_NAME}` }
+      ]
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" }
+      ]
+    },
+    {
+      label: "View",
+      submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }, { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }]
+    },
+    {
+      label: "Window",
+      submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }]
+    }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 function sendAgentEvent(event: unknown): void {
   for (const win of windows) {
@@ -18,7 +61,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 1040,
     minHeight: 720,
-    title: "chem-0",
+    title: APP_NAME,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -31,6 +74,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  installApplicationMenu();
+  app.setAboutPanelOptions({
+    applicationName: APP_NAME,
+    applicationVersion: app.getVersion(),
+    copyright: "Local chem-0 research project"
+  });
   backend.on("stderr", (text) => console.error(`[chem-0 python] ${text}`));
   backend.on("agent-event", sendAgentEvent);
   await backend.init();

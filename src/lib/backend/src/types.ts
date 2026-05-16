@@ -9,6 +9,7 @@ export type AgentSessionEventType =
   | "tool_response"
   | "artifact"
   | "ph_sample"
+  | "audio"
   | "error";
 
 export interface Experiment {

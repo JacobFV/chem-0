@@ -17,6 +17,8 @@ state, experiment state, persistence, or agent streaming independently.
 - Electron-first agent sessions, where the Node backend can stream GPT-5.5
   responses into the GUI and persist every message, tool call, tool response,
   artifact, and error as an event.
+- Voice interaction should be available from the same backend tools whether the
+  agent is hosted in Electron or connected through MCP.
 - A small Python boundary for the pieces that are already mature in Python:
   LeRobot, Feetech, OpenCV, `placo`, and the repo-local URDF kinematics.
 
@@ -25,12 +27,13 @@ state, experiment state, persistence, or agent streaming independently.
 ```mermaid
 flowchart LR
     agent["MCP Client / LLM Agent<br/>Codex, Claude, Gemini, etc."]
-    desktop["Electron Console<br/><code>src/apps/electron</code>"]
+    desktop["Chem-0 Lab Console<br/><code>src/apps/electron</code>"]
     mcp["Node stdio MCP Server<br/><code>src/apps/mcp-node</code>"]
     backend["Shared Node Backend<br/><code>@chem0/backend</code>"]
     db["SQLite Experiment Store<br/><code>data/chem0.sqlite</code>"]
     blobs["Blob Store<br/><code>data/blobs</code>"]
     openai["OpenAI Responses API<br/><code>gpt-5.5</code>"]
+    audio["Voice I/O<br/><code>speak_to_human</code><br/><code>listen_to_human</code>"]
     bridge["Python Bridge<br/><code>src/apps/python-bridge</code>"]
     core["Python Core<br/><code>src/lib/chem0</code>"]
     pose["Pose Table Resource<br/><code>lerobot://pose-table</code>"]
@@ -48,6 +51,7 @@ flowchart LR
     backend -->|"experiments<br/>sessions<br/>events"| db
     backend -->|"camera/tool artifacts"| blobs
     backend <-->|"agent stream<br/>tool loop"| openai
+    backend -->|"TTS/STT"| audio
     backend <-->|"JSON lines"| bridge
     bridge -->|"dispatch"| core
     core -->|"resources/read"| pose
@@ -69,7 +73,7 @@ flowchart LR
     classDef expert fill:#f7f7f7,stroke:#aaa,color:#333
     classDef hardware fill:#f4f1ff,stroke:#a99be8,color:#2f255f
     class agent,desktop agent
-    class mcp,backend,bridge,db,blobs,openai,pose,calib server
+    class mcp,backend,bridge,db,blobs,openai,audio,pose,calib server
     class core core
     class safety safety
     class ik ik
@@ -92,6 +96,7 @@ flowchart TB
     cart_motion["Cartesian Motion<br/><code>get_position</code><br/><code>set_position</code><br/>position-only IK"]
     gripper["Gripper<br/><code>open_gripper</code><br/><code>close_gripper</code>"]
     expert_tool["Expert Placeholder<br/><code>ask_export(question)</code><br/>returns expert not available"]
+    voice["Human Voice<br/><code>speak_to_human</code><br/><code>listen_to_human</code>"]
     experiments["Experiments<br/><code>create_experiment</code><br/><code>list_experiments</code><br/><code>list_agent_session_events</code><br/><code>list_experiment_artifacts</code>"]
 
     client -->|"stdio MCP"| server
@@ -103,6 +108,7 @@ flowchart TB
     server --> cart_motion
     server --> gripper
     server --> expert_tool
+    server --> voice
     server --> experiments
 
     classDef client fill:#eef6ff,stroke:#8fbceb,color:#17324d
@@ -110,7 +116,7 @@ flowchart TB
     classDef affordance fill:#fffdf7,stroke:#d2bd7d,color:#3d3416
     class client client
     class server server
-    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool,experiments affordance
+    class discovery,vision,bus_tools,state,joint_motion,cart_motion,gripper,expert_tool,voice,experiments affordance
 ```
 
 ## Data Flow
@@ -125,7 +131,9 @@ flowchart TB
    `experiment_id`, the backend logs `tool_call` and `tool_response` events.
 5. Hardware calls are forwarded to the Python bridge, which dispatches to
    `src/lib/chem0/core.py`.
-6. Image responses from tools such as `view_camera` are copied into the blob
+6. Voice tools can speak through ElevenLabs or macOS system speech and can
+   transcribe Electron microphone clips or MCP-provided audio files.
+7. Image responses from tools such as `view_camera` are copied into the blob
    store and referenced from `experiment_artifacts`.
-7. Joint-space and Cartesian movement still route through calibrated validation
+8. Joint-space and Cartesian movement still route through calibrated validation
    and step interpolation before any hardware action is sent.

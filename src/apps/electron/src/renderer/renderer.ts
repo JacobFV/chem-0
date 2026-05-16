@@ -26,16 +26,21 @@ const activeExperiment = document.querySelector<HTMLDivElement>("#active-experim
 const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
 const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
 const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
+const recordAudio = document.querySelector<HTMLButtonElement>("#record-audio")!;
+const stopAudio = document.querySelector<HTMLButtonElement>("#stop-audio")!;
 const phCanvas = document.querySelector<HTMLCanvasElement>("#ph-canvas");
 const camFrames: (HTMLImageElement | null)[] = [
   document.querySelector<HTMLImageElement>("#cam-0"),
   document.querySelector<HTMLImageElement>("#cam-1"),
   document.querySelector<HTMLImageElement>("#cam-2"),
 ];
+const availableCameraIds = new Set<number>();
 
 let experimentId = "";
 let sessionId = "";
 let assistantBubble: HTMLDivElement | null = null;
+let mediaRecorder: MediaRecorder | null = null;
+let recordedChunks: BlobPart[] = [];
 
 type PhSample = { value: number; timestamp: number };
 const phSamples: PhSample[] = [];
@@ -226,6 +231,7 @@ async function call(name: string, args: JsonObject = {}): Promise<JsonObject> {
 }
 
 async function refreshCamera(id: number): Promise<void> {
+  if (!availableCameraIds.has(id)) return;
   const target = camFrames[id];
   if (!target) return;
   try {
@@ -240,15 +246,46 @@ async function refreshCamera(id: number): Promise<void> {
     const image = content.find((item) => item.type === "image");
     if (image?.data && image.mimeType) target.src = `data:${image.mimeType};base64,${image.data}`;
   } catch {
-    // leave frame blank if this camera id isn't available
+    // camera became unavailable; remove from poll set so we don't keep failing
+    availableCameraIds.delete(id);
+    updateCameraVisibility();
   }
+}
+
+function updateCameraVisibility(): void {
+  for (let i = 0; i < camFrames.length; i++) {
+    const cell = camFrames[i]?.closest(".camera-cell") as HTMLElement | null;
+    if (!cell) continue;
+    cell.classList.toggle("hidden", !availableCameraIds.has(i));
+  }
+}
+
+async function discoverCameras(): Promise<void> {
+  try {
+    const result = await window.chem0.callTool("list_cameras", { max_id: camFrames.length - 1 });
+    const content = (result.content ?? []) as Array<{ type: string; text?: string }>;
+    const textBlock = content.find((c) => c.type === "text");
+    availableCameraIds.clear();
+    if (textBlock?.text) {
+      const parsed = JSON.parse(textBlock.text) as { cameras?: Array<{ camera_id?: number }> };
+      for (const cam of parsed.cameras ?? []) {
+        if (typeof cam.camera_id === "number" && cam.camera_id < camFrames.length) {
+          availableCameraIds.add(cam.camera_id);
+        }
+      }
+    }
+  } catch {
+    availableCameraIds.clear();
+  }
+  updateCameraVisibility();
 }
 
 async function boot(): Promise<void> {
   const [tools] = await Promise.all([window.chem0.listTools(), refreshExperiments()]);
   show(tools);
   await loadEvents();
-  void Promise.all([refreshCamera(0), refreshCamera(1), refreshCamera(2)]);
+  await discoverCameras();
+  void Promise.all(Array.from(availableCameraIds).map(refreshCamera));
 }
 
 document.querySelector("#create-experiment")?.addEventListener("click", async () => {
@@ -276,7 +313,11 @@ document.querySelector("#list-tools")?.addEventListener("click", () => void boot
 document.querySelector("#pose-table")?.addEventListener("click", async () => show(await window.chem0.readResource("lerobot://pose-table")));
 
 sendMessage.addEventListener("click", async () => {
-  const message = chatInput.value.trim();
+  await sendToAgent(chatInput.value);
+});
+
+async function sendToAgent(raw: string): Promise<void> {
+  const message = raw.trim();
   if (!message || !experimentId) return;
   chatInput.value = "";
   assistantBubble = null;
@@ -287,6 +328,50 @@ sendMessage.addEventListener("click", async () => {
   };
   if (sessionId) payload.session_id = sessionId;
   await window.chem0.sendAgentMessage(payload);
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  let binary = "";
+  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+recordAudio.addEventListener("click", async () => {
+  if (!experimentId) {
+    show("Create or select an experiment before recording audio.");
+    return;
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size > 0) recordedChunks.push(event.data);
+  });
+  mediaRecorder.addEventListener("stop", () => {
+    for (const track of stream.getTracks()) track.stop();
+  });
+  mediaRecorder.start();
+  recordAudio.disabled = true;
+  stopAudio.disabled = false;
+  appendChat("system", "Recording human audio...");
+});
+
+stopAudio.addEventListener("click", async () => {
+  if (!mediaRecorder) return;
+  const stopped = new Promise<void>((resolve) => mediaRecorder?.addEventListener("stop", () => resolve(), { once: true }));
+  mediaRecorder.stop();
+  await stopped;
+  recordAudio.disabled = false;
+  stopAudio.disabled = true;
+  const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+  mediaRecorder = null;
+  const result = await call("listen_to_human", {
+    audio_base64: await blobToBase64(blob),
+    mime_type: blob.type || "audio/webm"
+  });
+  const text = typeof result.text === "string" ? result.text.trim() : "";
+  if (text) await sendToAgent(text);
 });
 
 window.chem0.onAgentEvent((event) => {
@@ -315,7 +400,8 @@ window.chem0.onAgentEvent((event) => {
 
 setInterval(() => {
   if (document.visibilityState !== "visible") return;
-  void Promise.all([refreshCamera(0), refreshCamera(1), refreshCamera(2)]);
+  if (availableCameraIds.size === 0) return;
+  void Promise.all(Array.from(availableCameraIds).map(refreshCamera));
 }, 3000);
 
 window.addEventListener("resize", () => drawPhChart());

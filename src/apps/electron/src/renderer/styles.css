@@ -203,17 +203,21 @@ h2 {
 }
 
 .cameras-strip {
-  display: grid;
-  grid-template-columns: repeat(3, 200px);
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  justify-content: start;
 }
 
 .camera-cell {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  width: 200px;
   min-width: 0;
+}
+
+.camera-cell.hidden {
+  display: none;
 }
 
 .camera-label {
@@ -310,6 +314,12 @@ h2 {
 .composer textarea {
   min-height: 72px;
   font-family: inherit;
+}
+
+.composer-actions {
+  display: grid;
+  gap: 8px;
+  align-content: start;
 }
 
 label {

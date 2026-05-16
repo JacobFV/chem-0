@@ -1,6 +1,11 @@
+---
+name: bayesian-optimization
+description: Bayesian optimization for mixture and recipe problems using Ax. Use when optimizing compositions, formulations, dosed ingredients, or any design where components sum to a constant total. Covers simplex parameterization (continuous and discrete), multi-objective with qNEHVI, outcome constraints, partial observations (funnel pattern), and common pitfalls. Trigger when the user asks about BO, GP-based optimization, finding the best recipe, Pareto fronts, or `ax-platform` usage.
+---
+
 # Bayesian Optimization for Mixture Designs
 
-## When to use BO
+## When to use
 
 | Data size | Recommendation |
 |---|---|
@@ -12,7 +17,7 @@
 
 A **mixture** is a set of components that sum to a constant (total volume or total mass). The design space is a simplex, not a hyperrectangle.
 
-If components don't have to sum to a constant, use absolute amounts and skip this section.
+If components don't have to sum to a constant, use absolute amounts and skip the mixture-specific sections.
 
 ## Continuous mixture parameterization
 
@@ -63,7 +68,7 @@ client.configure_optimization(objective="-yield, -throughput")
 
 Ax uses `qNoisyExpectedHypervolumeImprovement` (qNEHVI) automatically and tracks the Pareto front.
 
-## Partial observations
+## Partial observations (funnel pattern)
 
 When some trials only measure some metrics (sensor fails, camera misses the DMM, etc.), omit the missing metric in `complete_trial`. Ax fits each metric on its available data via `ModelListGP`.
 
@@ -84,6 +89,12 @@ client.complete_trial(trial_index=j, raw_data={
 
 Don't pass `None` or `NaN` — just omit the key.
 
+## LLM-led initialization (replaces Sobol)
+
+For demos or domains where an LLM agent has useful exploration priors, the agent can propose the first ~5 trials directly instead of using a Sobol seed. A natural blind-mode strategy is one-variable-at-a-time. Once enough data is collected, the agent calls into BO and the GP takes over. The agent retains the ability to override BO when domain intuition warrants.
+
+This is functionally equivalent to a hand-designed seed and is well-supported by Ax — just call `complete_trial` with each LLM-proposed trial before the first `get_next_trials()`.
+
 ## Naming
 
 Names must be valid Python identifiers (no spaces, hyphens, or leading digits — Ax parses constraints with sympy). Include units when ambiguous: `resistance_ohm`, `volume_ml`, `concentration_mol_l`.
@@ -93,7 +104,7 @@ Names must be valid Python identifiers (no spaces, hyphens, or leading digits �
 1. Define design space (mixture vs. absolute; continuous vs. discrete)
 2. Specify objective(s) and outcome constraints
 3. Specify parameter constraints (sum ≤ 1 for mixtures)
-4. Seed with Sobol or LHS (5–10 trials)
+4. Seed: Sobol, LHS, or LLM-led exploration (5–10 trials)
 5. Loop: `get_next_trials()` → execute → `complete_trial(raw_data=...)`
 6. Inspect diagnostics every few trials
 7. Stop when hypervolume plateaus or budget exhausts
@@ -118,5 +129,5 @@ For k=3 mixtures, the natural visualization is a **ternary diagram** of the GP p
 
 - **Constraint as filter instead of GP.** Use `outcome_constraints` so the acquisition routes through a feasibility GP. Don't reject samples post-hoc.
 - **Missing noise.** Pass `(mean, sem)` tuples to `complete_trial`. If sem unknown, use a constant guess.
-- **Tiny-data GP.** Below ~10 trials, predictions are unreliable. Trust the space-filling seed.
+- **Tiny-data GP.** Below ~10 trials, predictions are unreliable. Trust the seed (Sobol, LHS, or LLM-led).
 - **Confusing mixtures and absolutes.** If your components must sum to a total, you have a mixture — add the parameter constraint. Otherwise, don't.

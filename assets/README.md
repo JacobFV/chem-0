@@ -17,3 +17,12 @@ assets/kinematics/
 ```
 
 `so101_kinematics.urdf` is a minimal FK/IK model for the MCP server.
+
+Visual robot models live under:
+
+```text
+assets/so101/
+```
+
+Those files vendor the upstream SO-101 visual URDF and STL meshes used by the
+Electron calibration viewer.

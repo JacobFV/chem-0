@@ -48,10 +48,10 @@ npm run calibrate:so101 -- \
 
 The Electron app also has a guided calibration window. Start the app with
 `npm run electron:dev`, then click **Calibrate** in the top-right toolbar. The
-window lists detected robot buses, displays a URDF-derived SO-101 arm preview,
-shows a live raw-position arm overlay while you move the hardware, highlights
-the current joint, records each endpoint with a button press, and writes the
-same calibration format as the terminal script.
+window lists detected robot buses, displays the actual upstream SO-101 visual
+URDF/STL mesh model, shows a live raw-position arm overlay while you move the
+hardware, highlights the current joint, records each endpoint with a button
+press, and writes the same calibration format as the terminal script.
 
 The script prompts joint-by-joint in this order:
 

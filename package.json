@@ -15,5 +15,8 @@
     "electron:watch": "npm --workspace @chem0/electron run watch",
     "calibrate:so101": "PYTHONPATH=src/lib .venv/bin/python scripts/calibrate_so101_deterministic.py",
     "build": "npm run backend:build && npm run mcp:build && npm run electron:build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
   }
 }

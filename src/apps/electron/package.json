@@ -11,12 +11,16 @@
     "watch": "npm run build && concurrently -k -n tsc,copy,app -c blue,magenta,green \"tsc -p tsconfig.json -w --preserveWatchOutput\" \"chokidar 'src/renderer/*.{html,css}' -c 'node scripts/copy-renderer.mjs'\" \"electronmon .\""
   },
   "electronmon": {
-    "patterns": ["dist/**/*"]
+    "patterns": [
+      "dist/**/*"
+    ]
   },
   "dependencies": {
-    "@chem0/backend": "0.1.0"
+    "@chem0/backend": "0.1.0",
+    "three": "^0.184.0"
   },
   "devDependencies": {
+    "@types/three": "^0.184.1",
     "@types/node": "^22.10.2",
     "chokidar-cli": "^3.0.0",
     "concurrently": "^9.1.0",

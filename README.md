@@ -277,8 +277,9 @@ that `robot_id`.
 
 The Electron app exposes the same deterministic workflow through a **Calibrate**
 button in the top-right toolbar. It opens a dedicated window with detected
-robot buses, a URDF-derived SO-101 arm preview, a live raw-position overlay,
-an endpoint orientation guide, and step-by-step endpoint recording.
+robot buses, the actual upstream SO-101 visual URDF/STL mesh model, a live
+raw-position overlay, an endpoint orientation guide, and step-by-step endpoint
+recording.
 
 The last validated visual pose was approximately:
 

@@ -13,76 +13,97 @@
   <body>
     <main class="app">
       <header class="topbar">
-        <div>
+        <div class="brand">
+          <span class="brand-mark"></span>
           <h1>chem-0</h1>
+          <span class="brand-sub">lab console</span>
         </div>
         <div class="actions">
-          <button id="open-calibration">Calibrate</button>
-          <button id="list-tools">Tools</button>
-          <button id="pose-table">Pose Table</button>
+          <button id="open-calibration" class="ghost">Calibrate</button>
+          <button id="list-tools" class="ghost">Tools</button>
+          <button id="pose-table" class="ghost">Pose Table</button>
         </div>
       </header>
 
       <section class="experiment-bar">
-        <label>
-          Experiment
+        <div class="field">
+          <label for="experiment">Experiment</label>
           <select id="experiment"></select>
-        </label>
-        <label>
-          Default robot
-          <input id="default-robot" placeholder="robot_id, e.g. mcp_so101" />
-        </label>
-        <button id="set-default-robot">Set Robot</button>
-        <label>
-          New experiment
-          <input id="experiment-name" value="Bench run" />
-        </label>
-        <button id="create-experiment">Create</button>
-        <div id="active-experiment">No experiment</div>
+        </div>
+        <div class="field">
+          <label for="default-robot">Default robot</label>
+          <div class="field-row">
+            <input id="default-robot" placeholder="mcp_so101" />
+            <button id="set-default-robot" class="ghost">Set</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="experiment-name">New experiment</label>
+          <div class="field-row">
+            <input id="experiment-name" value="Bench run" />
+            <button id="create-experiment" class="primary">Create</button>
+          </div>
+        </div>
+        <div class="status-pill" id="active-experiment">
+          <span class="status-dot"></span>
+          <span class="status-text">No experiment</span>
+        </div>
       </section>
 
       <section class="grid">
         <section class="left-column">
           <section class="panel ph-panel">
-            <h2>Real Time pH</h2>
+            <div class="panel-head">
+              <h2>Real-time pH</h2>
+              <span class="panel-hint">live samples</span>
+            </div>
             <div class="ph-graph">
               <canvas id="ph-canvas"></canvas>
             </div>
           </section>
           <section class="panel small-panel">
-            <h2>Backend Output</h2>
+            <div class="panel-head">
+              <h2>Backend output</h2>
+              <span class="panel-hint">last call</span>
+            </div>
             <pre id="output"></pre>
           </section>
         </section>
 
         <section class="right-column">
           <section class="panel cameras-panel">
-            <h2>Cameras</h2>
+            <div class="panel-head">
+              <h2>Cameras</h2>
+              <span class="panel-hint">local capture</span>
+            </div>
             <div class="cameras-strip">
               <div class="camera-cell" data-camera-id="0">
-                <div class="camera-label">cam 0</div>
                 <div class="camera-frame"><video id="cam-0" autoplay muted playsinline></video></div>
+                <div class="camera-label">cam 0</div>
               </div>
               <div class="camera-cell" data-camera-id="1">
-                <div class="camera-label">cam 1</div>
                 <div class="camera-frame"><video id="cam-1" autoplay muted playsinline></video></div>
+                <div class="camera-label">cam 1</div>
               </div>
               <div class="camera-cell" data-camera-id="2">
-                <div class="camera-label">cam 2</div>
                 <div class="camera-frame"><video id="cam-2" autoplay muted playsinline></video></div>
+                <div class="camera-label">cam 2</div>
               </div>
             </div>
           </section>
 
           <section class="panel chat-panel">
-            <h2>Agent Session</h2>
+            <div class="panel-head">
+              <h2>Agent session</h2>
+              <span class="panel-hint">gpt-5.5</span>
+            </div>
             <div id="chat-log" class="chat-log"></div>
             <div class="composer">
               <textarea id="chat-input" spellcheck="true" placeholder="Ask the agent to inspect, reason, or call robot tools."></textarea>
               <div class="composer-actions">
-                <button id="record-audio">Record</button>
-                <button id="stop-audio" disabled>Stop</button>
-                <button id="send-message">Send</button>
+                <button id="record-audio" class="ghost">Record</button>
+                <button id="stop-audio" class="ghost" disabled>Stop</button>
+                <button id="send-message" class="primary">Send</button>
               </div>
             </div>
           </section>

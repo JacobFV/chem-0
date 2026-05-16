@@ -27,6 +27,11 @@ const experimentName = document.querySelector<HTMLInputElement>("#experiment-nam
 const defaultRobotInput = document.querySelector<HTMLInputElement>("#default-robot")!;
 const setDefaultRobot = document.querySelector<HTMLButtonElement>("#set-default-robot")!;
 const activeExperiment = document.querySelector<HTMLDivElement>("#active-experiment")!;
+const activeExperimentText = activeExperiment.querySelector<HTMLSpanElement>(".status-text") ?? activeExperiment;
+function setActiveExperimentLabel(text: string, active: boolean): void {
+  activeExperimentText.textContent = text;
+  activeExperiment.classList.toggle("active", active);
+}
 const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
 const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
 const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
@@ -64,7 +69,10 @@ function withExperiment(args: JsonObject = {}): JsonObject {
 function setActive(experiment: JsonObject, session?: JsonObject): void {
   experimentId = String(experiment.id ?? "");
   sessionId = String(session?.id ?? sessionId);
-  activeExperiment.textContent = experimentId ? `${String(experiment.name ?? "Experiment")} · ${experimentId}` : "No experiment";
+  setActiveExperimentLabel(
+    experimentId ? `${String(experiment.name ?? "Experiment")} · ${experimentId}` : "No experiment",
+    Boolean(experimentId)
+  );
 }
 
 function appendChat(role: string, text: string): HTMLDivElement {
@@ -134,17 +142,17 @@ function drawPhChart(): void {
 
   for (const ph of [0, 7, 14]) {
     const y = padTop + innerH - (ph / 14) * innerH;
-    ctx.strokeStyle = "#111";
+    ctx.strokeStyle = "#1c2029";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(padLeft, y);
     ctx.lineTo(padLeft + innerW, y);
     ctx.stroke();
-    ctx.fillStyle = "#666";
+    ctx.fillStyle = "#7a8290";
     ctx.fillText(String(ph), padLeft - 6, y);
   }
 
-  ctx.strokeStyle = "#1f1f1f";
+  ctx.strokeStyle = "#262c37";
   ctx.beginPath();
   ctx.moveTo(padLeft, padTop);
   ctx.lineTo(padLeft, padTop + innerH);
@@ -166,7 +174,7 @@ function drawPhChart(): void {
     phSamples.length === 1 ? padLeft + innerW / 2 : padLeft + ((t - tMin) / tSpan) * innerW;
   const yFor = (v: number) => padTop + innerH - (Math.max(0, Math.min(14, v)) / 14) * innerH;
 
-  ctx.strokeStyle = "#7ad9c8";
+  ctx.strokeStyle = "#6ee7c8";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   phSamples.forEach((sample, i) => {
@@ -177,7 +185,7 @@ function drawPhChart(): void {
   });
   ctx.stroke();
 
-  ctx.fillStyle = "#7ad9c8";
+  ctx.fillStyle = "#6ee7c8";
   for (const sample of phSamples) {
     const x = xFor(sample.timestamp);
     const y = yFor(sample.value);
@@ -330,7 +338,7 @@ document.querySelector("#create-experiment")?.addEventListener("click", async ()
 experimentSelect.addEventListener("change", async () => {
   experimentId = experimentSelect.value;
   sessionId = "";
-  activeExperiment.textContent = experimentId || "No experiment";
+  setActiveExperimentLabel(experimentId || "No experiment", Boolean(experimentId));
   await loadEvents();
 });
 

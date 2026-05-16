@@ -50,10 +50,17 @@ script then installs `placo==0.9.20` for kinematics and restores NumPy to
 LeRobot's supported `<2.3` range. It also refreshes the Pinocchio/Coal shared
 library wheels used by `placo`.
 
-Run:
+Build the Node workspaces:
 
 ```sh
-.venv/bin/python src/apps/mcp/server.py
+npm install
+npm run build
+```
+
+Run the MCP server:
+
+```sh
+node src/apps/mcp-node/dist/server.js
 ```
 
 ## Electron Console
@@ -65,8 +72,10 @@ npm install
 npm run electron:dev
 ```
 
-The Electron app lives in `src/apps/electron` and talks to
-`src/apps/mcp/server.py` over the same stdio MCP protocol used by agents.
+The Electron app lives in `src/apps/electron`. Its main process hosts the same
+`@chem0/backend` package used by the MCP server. The backend owns
+`data/chem0.sqlite`, `data/blobs`, the Python bridge, and GPT-5.5 streaming
+agent sessions.
 
 ## Codex MCP Mount
 
@@ -76,9 +85,9 @@ Add:
 {
   "mcpServers": {
     "chem-0": {
-      "command": "/Users/vibestartup/Code/lerobot-test/.venv/bin/python",
+      "command": "node",
       "args": [
-        "/Users/vibestartup/Code/lerobot-test/src/apps/mcp/server.py"
+        "/Users/vibestartup/Code/lerobot-test/src/apps/mcp-node/dist/server.js"
       ],
       "env": {}
     }
@@ -87,3 +96,7 @@ Add:
 ```
 
 Restart Codex after changing MCP config.
+
+MCP clients should call `create_experiment` first, then pass the returned
+`experiment_id` into hardware, camera, and robot tool calls so the backend can
+append `tool_call` and `tool_response` records to the experiment.

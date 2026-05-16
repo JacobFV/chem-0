@@ -7,6 +7,9 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-renderer.mjs",
     "dev": "npm run build && electron dist/main/main.js"
   },
+  "dependencies": {
+    "@chem0/backend": "0.1.0"
+  },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "electron": "^33.2.1",

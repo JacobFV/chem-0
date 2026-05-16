@@ -1,101 +1,23 @@
 import { app, BrowserWindow, ipcMain } from "electron";
-import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
 import path from "node:path";
+import { Chem0Backend, type JsonObject } from "@chem0/backend";
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
+const repoRoot = path.resolve(__dirname, "../../../../..");
+const backend = new Chem0Backend(repoRoot);
+const windows = new Set<BrowserWindow>();
 
-class McpStdioClient {
-  private process: ChildProcessWithoutNullStreams | null = null;
-  private nextId = 1;
-  private buffer = Buffer.alloc(0);
-  private pending = new Map<number, { resolve: (value: JsonObject) => void; reject: (error: Error) => void }>();
-
-  constructor(private readonly repoRoot: string) {}
-
-  start(): void {
-    if (this.process) return;
-
-    const venvPython = path.join(this.repoRoot, ".venv", "bin", "python");
-    const python = existsSync(venvPython) ? venvPython : "python3";
-    const server = path.join(this.repoRoot, "src", "apps", "mcp", "server.py");
-    this.process = spawn(python, [server], {
-      cwd: this.repoRoot,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, PYTHONUNBUFFERED: "1" }
-    });
-
-    this.process.stdout.on("data", (chunk: Buffer) => this.read(chunk));
-    this.process.stderr.on("data", (chunk: Buffer) => console.error(`[chem-0 mcp] ${chunk.toString()}`));
-    this.process.on("exit", () => {
-      this.process = null;
-      for (const pending of this.pending.values()) pending.reject(new Error("MCP server exited."));
-      this.pending.clear();
-    });
-  }
-
-  stop(): void {
-    this.process?.kill();
-    this.process = null;
-  }
-
-  async request(method: string, params: JsonObject = {}): Promise<JsonObject> {
-    this.start();
-    if (!this.process) throw new Error("MCP server did not start.");
-
-    const id = this.nextId++;
-    const payload = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id, method, params }), "utf8");
-    this.process.stdin.write(`Content-Length: ${payload.length}\r\n\r\n`);
-    this.process.stdin.write(payload);
-
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      setTimeout(() => {
-        if (!this.pending.has(id)) return;
-        this.pending.delete(id);
-        reject(new Error(`MCP request timed out: ${method}`));
-      }, 30000);
-    });
-  }
-
-  private read(chunk: Buffer): void {
-    this.buffer = Buffer.concat([this.buffer, chunk]);
-    while (true) {
-      const headerEnd = this.buffer.indexOf("\r\n\r\n");
-      if (headerEnd < 0) return;
-
-      const header = this.buffer.subarray(0, headerEnd).toString("ascii");
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) throw new Error(`Invalid MCP header: ${header}`);
-
-      const length = Number(match[1]);
-      const bodyStart = headerEnd + 4;
-      const bodyEnd = bodyStart + length;
-      if (this.buffer.length < bodyEnd) return;
-
-      const body = this.buffer.subarray(bodyStart, bodyEnd).toString("utf8");
-      this.buffer = this.buffer.subarray(bodyEnd);
-      const message = JSON.parse(body) as JsonObject;
-      const id = Number(message.id);
-      const pending = this.pending.get(id);
-      if (!pending) continue;
-      this.pending.delete(id);
-      if (message.error) pending.reject(new Error(JSON.stringify(message.error)));
-      else pending.resolve(message.result as JsonObject);
-    }
+function sendAgentEvent(event: unknown): void {
+  for (const win of windows) {
+    if (!win.isDestroyed()) win.webContents.send("chem0:agent-event", event);
   }
 }
 
-const repoRoot = path.resolve(__dirname, "../../../../..");
-const mcp = new McpStdioClient(repoRoot);
-
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 860,
-    minWidth: 980,
-    minHeight: 680,
+    width: 1360,
+    height: 900,
+    minWidth: 1040,
+    minHeight: 720,
     title: "chem-0",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -103,22 +25,42 @@ function createWindow(): void {
       nodeIntegration: false
     }
   });
+  windows.add(win);
+  win.on("closed", () => windows.delete(win));
   void win.loadFile(path.join(__dirname, "../renderer/index.html"));
 }
 
-app.whenReady().then(() => {
-  mcp.start();
-  void mcp.request("initialize", {}).catch((error) => console.error(error));
+app.whenReady().then(async () => {
+  backend.on("stderr", (text) => console.error(`[chem-0 python] ${text}`));
+  backend.on("agent-event", sendAgentEvent);
+  await backend.init();
   createWindow();
 });
 
 app.on("window-all-closed", () => {
-  mcp.stop();
+  backend.stop();
   if (process.platform !== "darwin") app.quit();
 });
 
-ipcMain.handle("chem0:tools-list", async () => mcp.request("tools/list"));
-ipcMain.handle("chem0:resource-read", async (_event, uri: string) => mcp.request("resources/read", { uri }));
-ipcMain.handle("chem0:tool-call", async (_event, name: string, args: JsonObject) =>
-  mcp.request("tools/call", { name, arguments: args })
+ipcMain.handle("chem0:tools-list", async () => backend.listTools());
+ipcMain.handle("chem0:resource-read", async (_event, uri: string) => backend.readResource(uri));
+ipcMain.handle("chem0:tool-call", async (_event, name: string, args: JsonObject) => backend.callTool(name, args));
+ipcMain.handle("chem0:create-experiment", async (_event, name: string, metadata: JsonObject = {}) =>
+  backend.createExperiment(name, metadata)
 );
+ipcMain.handle("chem0:list-experiments", async () => ({ experiments: backend.listExperiments() as unknown as JsonObject[] }));
+ipcMain.handle("chem0:list-events", async (_event, experimentId: string) => ({
+  events: backend.store.listEvents(experimentId) as unknown as JsonObject[]
+}));
+ipcMain.handle("chem0:list-artifacts", async (_event, experimentId: string) => ({
+  artifacts: backend.store.listArtifacts(experimentId)
+}));
+ipcMain.handle("chem0:agent-message", async (_event, input: JsonObject) => {
+  void backend.streamAgentMessage({
+    experimentId: String(input.experiment_id),
+    sessionId: typeof input.session_id === "string" ? input.session_id : undefined,
+    message: String(input.message ?? ""),
+    model: typeof input.model === "string" ? input.model : undefined
+  });
+  return { accepted: true };
+});

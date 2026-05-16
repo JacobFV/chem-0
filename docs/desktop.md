@@ -6,24 +6,25 @@ The desktop app is a TypeScript Electron console in:
 src/apps/electron
 ```
 
-It does not talk to the robot directly. Instead, the Electron main process
-spawns:
+The Electron main process hosts `@chem0/backend` directly. It does not spawn the
+MCP server. That means the GUI and stdio MCP use the same backend code path
+while keeping their transport layers separate:
 
 ```text
-src/apps/mcp/server.py
+Electron renderer -> Electron IPC -> @chem0/backend -> Python bridge -> LeRobot/OpenCV
+MCP client        -> stdio MCP    -> @chem0/backend -> Python bridge -> LeRobot/OpenCV
 ```
 
-and sends the same stdio MCP JSON-RPC messages that Codex, Claude, Gemini, or
-other MCP clients use.
+## Backend Responsibilities
 
-## Why This Shape
-
-The hardware boundary stays in Python because LeRobot, OpenCV, Feetech, and the
-current calibration path already work there. The TypeScript layer handles only
-desktop UI and MCP orchestration.
-
-This avoids a risky rewrite of the servo protocol while still making the
-operator experience richer than raw MCP calls.
+- Initialize and save `data/chem0.sqlite`.
+- Manage `data/blobs` for camera and tool artifacts.
+- Create experiments and agent sessions.
+- Append `agent_session_events` for messages, assistant deltas, tool calls,
+  tool responses, artifacts, and errors.
+- Stream GPT-5.5 Responses API events into the GUI.
+- Run the tool loop when the model requests a backend tool.
+- Forward hardware calls to the small Python bridge.
 
 ## Run
 
@@ -34,18 +35,19 @@ npm install
 npm run electron:dev
 ```
 
-The app uses the repo-local Python virtual environment when available:
+The backend uses the repo-local Python virtual environment:
 
 ```text
 .venv/bin/python
 ```
 
-If that path is missing, it falls back to `python3`.
-
 ## Current Views
 
-The initial console includes:
+The console includes:
 
+- experiment creation and selection,
+- GPT-5.5 streaming agent session chat,
+- persisted session event replay,
 - tool discovery,
 - pose table readout,
 - serial port and camera discovery,
@@ -53,7 +55,7 @@ The initial console includes:
 - current arm pose and Cartesian position calls,
 - gripper open/close calls,
 - `ask_export(question)` placeholder call,
-- an arbitrary MCP tool-call JSON panel.
+- an arbitrary backend tool-call JSON panel.
 
 Motion tools are exposed through the generic tool-call panel rather than large
-buttons, so accidental movement requires an explicit JSON payload.
+movement buttons, so accidental movement requires an explicit JSON payload.

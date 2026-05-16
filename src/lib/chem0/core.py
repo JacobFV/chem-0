@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Compact stdio MCP server for a Hugging Face LeRobot SO-101 follower.
-
-Run with:
-    python lerobot_mcp_server.py
-
-The server intentionally implements only the small MCP surface needed by most
-clients: initialize, tools/list, and tools/call.
-"""
+"""Core robot, camera, kinematics, and tool implementation for chem-0."""
 
 from __future__ import annotations
 
@@ -15,18 +8,17 @@ import json
 import base64
 import sys
 import time
-import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
-PROTOCOL_VERSION = "2024-11-05"
 DEFAULT_MAX_DELTA = 5.0
 DEFAULT_PORT = "/dev/cu.usbmodem5AB01815731"
 DEFAULT_ROBOT_ID = "mcp_so101"
 POSE_TABLE_URI = "lerobot://pose-table"
-DEFAULT_URDF_PATH = Path(__file__).resolve().parent / "assets" / "kinematics" / "so101_kinematics.urdf"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_URDF_PATH = REPO_ROOT / "assets" / "kinematics" / "so101_kinematics.urdf"
 DEFAULT_TARGET_FRAME = "gripper_frame_link"
 DEFAULT_OPEN_GRIPPER = 0.0
 DEFAULT_CLOSE_GRIPPER = 100.0
@@ -137,24 +129,6 @@ POSE_TABLE_NOTE = (
     "looked down/floor-parallel, shoulder_lift around 0 looked roughly 90 degrees/upright, "
     "and shoulder_lift around -96 overshot past upright."
 )
-
-
-def _jsonrpc_result(msg_id: Any, result: Any) -> dict[str, Any]:
-    return {"jsonrpc": "2.0", "id": msg_id, "result": result}
-
-
-def _jsonrpc_error(msg_id: Any, code: int, message: str, data: Any = None) -> dict[str, Any]:
-    err: dict[str, Any] = {"code": code, "message": message}
-    if data is not None:
-        err["data"] = data
-    return {"jsonrpc": "2.0", "id": msg_id, "error": err}
-
-
-def _write_message(message: dict[str, Any]) -> None:
-    body = json.dumps(message, separators=(",", ":")).encode("utf-8")
-    sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii"))
-    sys.stdout.buffer.write(body)
-    sys.stdout.buffer.flush()
 
 
 def _tool_text(text: str) -> dict[str, Any]:
@@ -711,34 +685,6 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "move_pose",
-        "description": "Backward-compatible alias for set_arm_pose.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "pose": {
-                    "type": "object",
-                    "properties": {
-                        "shoulder_pan": {"type": "number"},
-                        "shoulder_lift": {"type": "number"},
-                        "elbow_flex": {"type": "number"},
-                        "wrist_flex": {"type": "number"},
-                        "wrist_roll": {"type": "number"},
-                        "gripper": {"type": "number"},
-                    },
-                    "required": JOINTS,
-                    "additionalProperties": False,
-                },
-                "max_step": {"type": "number", "minimum": 0.5, "maximum": 20, "default": DEFAULT_MAX_DELTA},
-                "hold_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.35},
-                "settle_seconds": {"type": "number", "minimum": 0, "maximum": 5, "default": 0.5},
-                "allow_out_of_range": {"type": "boolean", "default": False},
-            },
-            "required": ["pose"],
-            "additionalProperties": False,
-        },
-    },
-    {
         "name": "set_position",
         "description": (
             "Move the end-effector to Cartesian x/y/z in meters using position-only IK over LeRobot FK, "
@@ -1001,10 +947,6 @@ def set_arm_pose(args: dict[str, Any]) -> dict[str, Any]:
         return _tool_error(str(exc))
 
 
-def move_pose(args: dict[str, Any]) -> dict[str, Any]:
-    return set_arm_pose(args)
-
-
 def set_position(args: dict[str, Any]) -> dict[str, Any]:
     if not STATE.connected:
         return _tool_error("Robot is not connected. Call connect_so101 first.")
@@ -1168,7 +1110,6 @@ HANDLERS = {
     "get_pose_table": get_pose_table,
     "get_position": get_position,
     "set_arm_pose": set_arm_pose,
-    "move_pose": move_pose,
     "set_position": set_position,
     "open_gripper": open_gripper,
     "close_gripper": close_gripper,
@@ -1195,93 +1136,3 @@ def read_resource(uri: str) -> dict[str, Any]:
             ]
         }
     raise ValueError(f"Unknown resource URI: {uri}")
-
-
-def handle(request: dict[str, Any]) -> dict[str, Any] | None:
-    method = request.get("method")
-    msg_id = request.get("id")
-
-    if msg_id is None:
-        return None
-
-    try:
-        if method == "initialize":
-            return _jsonrpc_result(
-                msg_id,
-                {
-                    "protocolVersion": PROTOCOL_VERSION,
-                    "capabilities": {"tools": {}, "resources": {}},
-                    "serverInfo": {"name": "lerobot-mcp", "version": "0.1.0"},
-                },
-            )
-        if method == "resources/list":
-            return _jsonrpc_result(msg_id, {"resources": RESOURCES})
-        if method == "resources/read":
-            params = request.get("params") or {}
-            return _jsonrpc_result(msg_id, read_resource(params.get("uri", "")))
-        if method == "tools/list":
-            return _jsonrpc_result(msg_id, {"tools": TOOLS})
-        if method == "tools/call":
-            params = request.get("params") or {}
-            name = params.get("name")
-            args = params.get("arguments") or {}
-            if name not in HANDLERS:
-                return _jsonrpc_error(msg_id, -32602, f"Unknown tool: {name}")
-            return _jsonrpc_result(msg_id, HANDLERS[name](args))
-        return _jsonrpc_error(msg_id, -32601, f"Method not found: {method}")
-    except Exception as exc:
-        return _jsonrpc_error(
-            msg_id,
-            -32000,
-            str(exc),
-            {"traceback": traceback.format_exc(limit=8)},
-        )
-
-
-def _read_message() -> dict[str, Any] | None:
-    """Read one MCP stdio message.
-
-    MCP stdio uses Content-Length framing. A newline-delimited JSON fallback is
-    kept for easy shell smoke tests.
-    """
-    first = sys.stdin.buffer.readline()
-    if not first:
-        return None
-
-    if first.lstrip().startswith(b"{"):
-        return json.loads(first)
-
-    headers: dict[str, str] = {}
-    line = first
-    while line not in (b"\r\n", b"\n", b""):
-        name, _, value = line.decode("ascii").partition(":")
-        headers[name.lower()] = value.strip()
-        line = sys.stdin.buffer.readline()
-
-    length = int(headers["content-length"])
-    body = sys.stdin.buffer.read(length)
-    return json.loads(body)
-
-
-def main() -> int:
-    while True:
-        try:
-            request = _read_message()
-        except Exception as exc:
-            _write_message(_jsonrpc_error(None, -32700, f"Parse error: {exc}"))
-            continue
-
-        if request is None:
-            break
-
-        response = handle(request)
-        if response is not None:
-            _write_message(response)
-
-    if STATE.connected:
-        STATE.robot.disconnect()
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

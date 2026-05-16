@@ -1,0 +1,12 @@
+{
+  "name": "chem-0",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "src/apps/electron"
+  ],
+  "scripts": {
+    "electron:build": "npm --workspace @chem0/electron run build",
+    "electron:dev": "npm --workspace @chem0/electron run dev"
+  }
+}

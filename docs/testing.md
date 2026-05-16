@@ -3,8 +3,19 @@
 ## Syntax Check
 
 ```sh
-.venv/bin/python -m py_compile lerobot_mcp_server.py
+.venv/bin/python -m py_compile src/apps/mcp/server.py src/lib/chem0/core.py src/lib/chem0/mcp_server.py
 ```
+
+## Electron Build Check
+
+After installing Node dependencies:
+
+```sh
+npm run electron:build
+```
+
+This compiles the TypeScript Electron main/preload/renderer code and copies the
+renderer HTML/CSS into `src/apps/electron/dist`.
 
 ## MCP Protocol Smoke Test
 
@@ -28,7 +39,6 @@ get_arm_pose
 get_pose_table
 get_position
 set_arm_pose
-move_pose
 set_position
 open_gripper
 close_gripper

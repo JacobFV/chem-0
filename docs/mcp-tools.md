@@ -164,10 +164,6 @@ Preferred full-arm joint-space motion primitive. Requires all six joint values.
 By default, out-of-range poses are rejected and movement is interpolated in
 small steps.
 
-### `move_pose`
-
-Backward-compatible alias for `set_arm_pose`.
-
 ## Cartesian IK
 
 ### `get_position`

@@ -14,8 +14,7 @@ get_pose_table
 
 ## Joint Order
 
-`set_arm_pose` and its backward-compatible alias `move_pose` require exactly
-these six values:
+`set_arm_pose` requires exactly these six values:
 
 ```text
 shoulder_pan

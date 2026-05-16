@@ -33,8 +33,6 @@ get_position -> [x, y, z, gripper]
 set_position <- x, y, z, optional gripper
 ```
 
-`move_pose` remains as a backward-compatible alias for `set_arm_pose`.
-
 ## Coordinates
 
 `x`, `y`, and `z` are meters in the SO-101 URDF base frame. `gripper` is percent

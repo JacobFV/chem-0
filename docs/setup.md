@@ -53,8 +53,20 @@ library wheels used by `placo`.
 Run:
 
 ```sh
-.venv/bin/python lerobot_mcp_server.py
+.venv/bin/python src/apps/mcp/server.py
 ```
+
+## Electron Console
+
+Install Node dependencies and run the desktop console:
+
+```sh
+npm install
+npm run electron:dev
+```
+
+The Electron app lives in `src/apps/electron` and talks to
+`src/apps/mcp/server.py` over the same stdio MCP protocol used by agents.
 
 ## Codex MCP Mount
 
@@ -66,7 +78,7 @@ Add:
     "chem-0": {
       "command": "/Users/vibestartup/Code/lerobot-test/.venv/bin/python",
       "args": [
-        "/Users/vibestartup/Code/lerobot-test/lerobot_mcp_server.py"
+        "/Users/vibestartup/Code/lerobot-test/src/apps/mcp/server.py"
       ],
       "env": {}
     }

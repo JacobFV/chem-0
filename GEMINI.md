@@ -12,7 +12,8 @@ Read these files before operating hardware:
 3. `docs/operations.md`
 4. `docs/pose-table.md`
 5. `docs/kinematics.md`
-6. `docs/troubleshooting.md`
+6. `docs/desktop.md`
+7. `docs/troubleshooting.md`
 
 ## Known Local Defaults
 
@@ -32,7 +33,7 @@ Calibration file:
 ## Run Server
 
 ```sh
-.venv/bin/python lerobot_mcp_server.py
+.venv/bin/python src/apps/mcp/server.py
 ```
 
 ## Codex MCP Config
@@ -43,7 +44,7 @@ Calibration file:
     "chem-0": {
       "command": "/Users/vibestartup/Code/lerobot-test/.venv/bin/python",
       "args": [
-        "/Users/vibestartup/Code/lerobot-test/lerobot_mcp_server.py"
+        "/Users/vibestartup/Code/lerobot-test/src/apps/mcp/server.py"
       ],
       "env": {}
     }
@@ -62,11 +63,10 @@ Calibration file:
 7. `observe`.
 8. `get_arm_pose`.
 9. Move with `set_arm_pose` for joint-space control or `set_position` for IK.
-10. Use `move_pose` only as the legacy alias for `set_arm_pose`.
-11. Use `ask_export(question)` only as a placeholder for future expert review;
+10. Use `ask_export(question)` only as a placeholder for future expert review;
     it currently returns `expert not available`.
-12. Keep `max_step <= 5` unless a human explicitly approves otherwise.
-13. `disconnect`.
+11. Keep `max_step <= 5` unless a human explicitly approves otherwise.
+12. `disconnect`.
 
 ## Preferred Joint-Space Motion Tool
 
@@ -126,7 +126,7 @@ Do not assume joint names imply visual direction. Use camera frames.
 ## Testing
 
 ```sh
-.venv/bin/python -m py_compile lerobot_mcp_server.py
+.venv/bin/python -m py_compile src/apps/mcp/server.py src/lib/chem0/core.py src/lib/chem0/mcp_server.py
 ```
 
 See `docs/testing.md` for MCP-level and hardware-level tests.

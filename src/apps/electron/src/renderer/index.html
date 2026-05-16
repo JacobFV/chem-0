@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>chem-0</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>chem-0</h1>
+          <p>Local LeRobot control console backed by the same stdio MCP server used by agents.</p>
+        </div>
+        <div class="actions">
+          <button id="list-tools">Tools</button>
+          <button id="pose-table">Pose Table</button>
+          <button id="ask-export">Ask Expert</button>
+        </div>
+      </header>
+
+      <section class="grid">
+        <section class="panel controls">
+          <h2>Discovery</h2>
+          <div class="button-row">
+            <button id="list-ports">Serial Ports</button>
+            <button id="list-cameras">Cameras</button>
+            <button id="view-camera">View Camera 0</button>
+          </div>
+
+          <h2>Robot State</h2>
+          <div class="button-row">
+            <button id="get-arm-pose">Arm Pose</button>
+            <button id="get-position">Position</button>
+            <button id="open-gripper">Open Gripper</button>
+            <button id="close-gripper">Close Gripper</button>
+          </div>
+
+          <h2>Tool Call</h2>
+          <label>
+            Tool
+            <select id="tool"></select>
+          </label>
+          <label>
+            Arguments
+            <textarea id="args" spellcheck="false">{}</textarea>
+          </label>
+          <button id="call-tool">Call Tool</button>
+        </section>
+
+        <section class="panel camera">
+          <h2>Camera</h2>
+          <div class="camera-frame">
+            <img id="camera-frame" alt="Camera frame" />
+          </div>
+        </section>
+
+        <section class="panel output-panel">
+          <h2>Output</h2>
+          <pre id="output"></pre>
+        </section>
+      </section>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

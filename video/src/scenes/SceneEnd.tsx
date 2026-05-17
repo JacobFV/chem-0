@@ -8,13 +8,12 @@ import {
 import { Paper } from "../components/Paper";
 import { palette, type } from "../theme";
 
-// Final card: a single line, a long rule, a small colophon. The rule draws
-// in slowly from center outward as the credits fade.
+// Outro: wordmark, repo URL, thanks. Slow rule draw and fade.
 export const SceneEnd: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
   const t = spring({ frame, fps, config: { damping: 220 } });
-  const w = interpolate(t, [0, 1], [0, 540]);
+  const w = interpolate(t, [0, 1], [0, 640]);
   const fade = interpolate(
     frame,
     [durationInFrames - 30, durationInFrames],
@@ -39,21 +38,23 @@ export const SceneEnd: React.FC = () => {
             fontFamily: type.mono,
             fontSize: 14,
             letterSpacing: 6,
-            color: palette.inkMute,
+            color: palette.accent,
             textTransform: "uppercase",
-            marginBottom: 24,
+            marginBottom: 22,
           }}
         >
-          end of field report
+          thanks for watching
         </div>
         <div
           style={{
-            fontFamily: type.serif,
-            fontSize: 96,
-            color: palette.ink,
+            fontFamily: type.sans,
+            fontSize: 140,
+            color: palette.text1,
             lineHeight: 1,
+            fontWeight: 600,
             opacity: t,
-            transform: `translateY(${interpolate(t, [0, 1], [8, 0])}px)`,
+            transform: `translateY(${interpolate(t, [0, 1], [10, 0])}px)`,
+            letterSpacing: -2,
           }}
         >
           chem-0
@@ -62,33 +63,31 @@ export const SceneEnd: React.FC = () => {
           style={{
             height: 1,
             width: w,
-            background: palette.ink,
-            margin: "26px 0 22px 0",
+            background: palette.accent,
+            margin: "30px 0 26px 0",
+            opacity: 0.6,
           }}
         />
         <div
           style={{
-            fontFamily: type.serif,
-            fontStyle: "italic",
+            fontFamily: type.mono,
             fontSize: 26,
-            color: palette.inkSoft,
+            color: palette.text1,
             opacity: spring({ frame: frame - 18, fps, config: { damping: 220 } }),
           }}
         >
-          a small lab, a smaller agent. thanks for watching.
+          github.com/JacobFV/chem-0
         </div>
         <div
           style={{
-            marginTop: 80,
-            fontFamily: type.mono,
-            fontSize: 11,
-            letterSpacing: 3,
-            color: palette.inkMute,
-            opacity: spring({ frame: frame - 60, fps, config: { damping: 220 } }),
+            marginTop: 56,
+            fontFamily: type.sans,
+            fontSize: 18,
+            color: palette.text3,
+            opacity: spring({ frame: frame - 50, fps, config: { damping: 220 } }),
           }}
         >
-          colophon — set in cormorant garamond &amp; jet brains mono ·
-          rendered with remotion · arms procedural, not photographed
+          pull requests welcome.
         </div>
       </div>
     </Paper>

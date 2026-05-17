@@ -39,12 +39,12 @@ export const Card: React.FC<{
         opacity: t,
         transform: `translateY(${-yo}px)`,
         background: "#FBFAF6",
-        border: `1px solid ${palette.rule}`,
+        border: `1px solid ${palette.border1}`,
         boxShadow:
           "0 2px 0 rgba(0,0,0,0.02), 0 18px 30px -22px rgba(40,30,15,0.35)",
         borderRadius: 2,
         padding: "20px 22px",
-        color: palette.ink,
+        color: palette.text1,
         fontFamily: type.sans,
       }}
     >
@@ -54,12 +54,12 @@ export const Card: React.FC<{
             position: "absolute",
             top: -10,
             left: 14,
-            background: palette.paper,
+            background: palette.bg1,
             padding: "0 8px",
             fontFamily: type.mono,
             fontSize: 11,
             letterSpacing: 2,
-            color: accent ?? palette.inkMute,
+            color: accent ?? palette.text3,
             textTransform: "uppercase",
           }}
         >

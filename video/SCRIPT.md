@@ -1,110 +1,84 @@
-# chem-0 — Narration script
+# chem-0 — Narration script v3 (Dr. Quibble · ElevenLabs)
 
-A quiet, slow read. Long sentences are allowed to breathe; the short
-fragments should land hard. Cadence reference: *the-shape-of-inquiry*.
-
-The "marker" column matches the `marker` prop on the on-screen caption so
-you can find your place visually while recording. All timings are in seconds
-inside the final composition; the Remotion `Main` composition is the source
-of truth — if you re-time scenes there, regenerate this script's markers but
-the prose can stay.
+Faster, more accurate, more "showing real shit happening in the background".
+The model keeps the visuals doing things while the voice talks. Target
+~2:45 total.
 
 ---
 
-## 01 — TITLE  (0:00 – 0:12)
+## 01 — TITLE  (~7 s)
 
-> A short film about a chemistry that didn't finish.
-> Recorded from a small lab, in May.
+> chem-zero — a local autonomous chemistry agent driving a pair of
+> SO-one-oh-one arms. Here's what it actually does.
 
-## 02 — THE QUESTION  (0:12 – 0:32)
+## 02 — PITCH  (~15 s)
 
-> The question was simple, the way most useful questions are simple.
-> Could a small, embodied agent learn to *see* a chemistry — not name it,
-> not summarize it, not describe its color in fluent English — but actually
-> *measure* it, with its own eyes, its own hands, its own slow contact
-> with the world?
+> You type "pick up vial three and tell me what it is." The agent reasons,
+> calls tools, the arms move, the camera sees, and a row lands in your
+> local SQLite. All on your laptop. About six hundred bucks of hardware.
+> All open source.
 
-## 03 — THE TARGET  (0:32 – 0:55)
+## 03 — CONSOLE  (~18 s)
 
-> The target was a colorimetric test. A pH strip dipped into an unknown
-> vial. A color, read against a reference card. A number, written down.
-> The whole pipeline of a working scientist, compressed to a single
-> repeatable gesture — so we could measure whether the agent had it, or
-> only the appearance of it.
+> The console is one Electron window. Experiments on the left, a
+> real-time pH plot in the middle, agent chat on the right. Every event
+> the agent emits — tool calls, deltas, tool responses — streams into
+> this panel live, with the experiment ID stamped on each row.
 
-## 04 — APPROACH  (0:55 – 1:25)
+## 04 — AGENT LOOP  (~22 s)
 
-> Two arms. One camera. A printed reference card.
-> A short script in the agent's hand: *connect, observe, look, dip, lift,
-> name the color, name the pH.*
-> The pipeline reads, top to bottom, like a small kitchen recipe — and
-> like every recipe, it depends on the kitchen.
+> Here's an actual session. User message. The agent streams a plan,
+> then fires tools — set_position, close_gripper, observe, infer_vial_ph,
+> record_ph — one after the other. We pipe the OpenAI Responses API
+> directly to a local tool registry. Each tool call is one IPC round-trip
+> to the backend, executed against the arm or the camera, and the result
+> shows up in the chat in under a second.
 
-## 05 — ARCHITECTURE  (1:25 – 2:05)
+## 05 — CALIBRATION  (~18 s)
 
-> Underneath was a quiet stack.
-> An Electron console for the human. A stdio MCP server for the model.
-> A Node backend that owned experiments, artifacts, and sessions.
-> A Python bridge that spoke to LeRobot and OpenCV.
-> A SQLite file that remembered everything.
->
-> The control loop was small enough to read in an afternoon. Which turned
-> out to be the only honest way to debug it.
+> Calibration is its own window. We render a ghost setpoint — the pose
+> the wizard wants you at — and a live arm that follows your servo
+> readings. You move the real arm into the ghost. Six endpoints later,
+> we write a new LeRobot calibration JSON and the bus stops surprising us.
 
-## 06 — THE CONSOLE  (2:05 – 2:35)
+## 06 — VIRTUAL WORLD  (~16 s)
 
-> The console was the first thing we built and the last thing we trusted.
-> Cameras on the left. Arms in the middle. The agent's chat on the right.
-> Every tool the model could call was a button a human could press first.
-> Nothing the agent did was supposed to be invisible.
+> Same backend drives a Three-D virtual-world editor. Dark grid floor,
+> a gold SO-one-oh-one mesh, blue camera markers, gray rigid bodies.
+> Drag things in, set positions, run the agent against the sim using
+> the same tool calls it'd use against hardware.
 
-## 07 — CALIBRATION  (2:35 – 3:25)
+## 07 — VISION  (~20 s)
 
-> And then we tried to calibrate the arms.
->
-> Calibration is not an infrastructure detail. It is the agent's first act
-> of humility before reality — and ours.
-> Servos that read perfectly in isolation drifted by a degree under load.
-> A cable channel was reversed. A jumper was missing. The wrist roll
-> wrapped past its register limit and the gripper closed on nothing.
->
-> We wrote a deterministic walk-through: Z1, X1, X2, X3, Z2, hand. Six
-> endpoints, six small confessions of where the arm actually lives. Then
-> we wrote it again, in the GUI, for the next person who would have to do
-> this without us.
+> Vision is honest OpenCV. We find vials with a blue-cap detector,
+> sample the liquid region below the cap, and classify the bromothymol
+> blue hue in HSV against a calibrated reference image — yellow is acid,
+> blue is base. There's also a DMM-probe detector and a multimeter OCR
+> step for reading resistance.
 
-## 08 — DEBUGGING  (3:25 – 4:10)
+## 08 — BO TRAJECTORY  (~18 s)
 
-> Most of the project, in the end, was this:
-> a port that wouldn't open, a frame that wouldn't decode, a kinematics
-> solver that wanted a URDF in slightly different units, a pose table
-> that disagreed with the camera.
->
-> The chemistry waited. It is patient that way. Chemistry has been waiting
-> for centuries.
+> Once vision is solid, the agent can plan experiments. This is a
+> simulated Bayesian-optimization trajectory: pH evolving as the agent
+> adds NaCl, then dissolved borax, then a vinegar drop. Each step is a
+> tool sequence — pick, pour, dip, read. The chart updates as the
+> database does.
 
-## 09 — WHAT WE GOT  (4:10 – 4:45)
+## 09 — ARCHITECTURE  (~16 s)
 
-> What we got, in the time we had, was the simulation half.
-> A virtual scene the agent could rehearse in. A pose table it could
-> trust. A camera feed that matched what a real camera would see, in a
-> light that matched the lab.
-> The arms moved. The colors read. The pipeline closed.
->
-> It just didn't close on a real vial.
+> Architecture, quickly: Electron renderer; Node backend in the main
+> process; OpenAI Responses API for the agent loop; SQLite for events
+> and artifacts; a Python bridge for LeRobot, placo IK, and OpenCV. The
+> same tools are also exposed over stdio MCP so external agents like
+> Codex can drive the rig.
 
-## 10 — NEXT TIME  (4:45 – 5:30)
+## 10 — STATUS  (~14 s)
 
-> If we did this again, we would spend the first week calibrating, on
-> purpose. We would treat the URDF as the experiment. We would record the
-> trajectory, not the answer — because the trajectory is the object, and
-> the answer is residue.
->
-> We would ask the agent to dip a strip into water before we asked it to
-> dip a strip into anything that mattered.
-> And we would let the chemistry wait a little longer.
+> What ships today: the console, calibration, virtual world, recording
+> and replay, the full vision and IK stacks. What's next: closing the
+> loop on real hardware — BO-driven planning, identity classification
+> across vinegar, NaCl, baking soda, and borax.
 
-## 11 — END  (5:30 – 5:55)
+## 11 — CLOSE  (~6 s)
 
-> chem-0. A small lab, a smaller agent. Recorded in May.
-> Thanks for watching.
+> github dot com slash JacobFV slash chem-zero. Thanks for watching!

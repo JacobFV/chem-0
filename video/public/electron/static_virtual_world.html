@@ -1,0 +1,230 @@
+<!doctype html>
+<!--
+  Static demo build of src/apps/electron/src/renderer/virtual-world.html.
+  Same markup + stylesheets. The live three.js scene is replaced with a
+  background image (two_arms_table.png) so the editor reads inside an
+  iframe without needing the actual scene runtime. The Selected pane is
+  seeded with a sample object to show the property editor populated.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chem-0 Virtual World</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./virtual-world.css" />
+    <style>
+      ::-webkit-scrollbar { width: 0; height: 0; }
+      html, body { width: 1720px; height: 862px; }
+      .sidebar-pane { display: none; }
+      .sidebar-pane.active { display: flex; flex-direction: column; }
+      /* Sibling-path photo as the world floor so the editor doesn't
+         render an empty viewport. The selected-vial gizmo is drawn on
+         top via ::after below. */
+      /* Approximation of the actual editor scene:
+         dark floor + #303030/#151515 grid lines + a tinted highlight
+         where the selected object would sit. The real editor uses
+         Three.js; this CSS-only render keeps the iframe lightweight
+         while reading as the same surface. */
+      #vw-scene.vw-scene {
+        background:
+          /* selection glow */
+          radial-gradient(140px 100px at 55% 56%, rgba(245,215,110,0.18) 0%, rgba(245,215,110,0) 70%),
+          /* grid */
+          linear-gradient(rgba(48,48,48,0.55) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(48,48,48,0.55) 1px, transparent 1px),
+          /* perspective floor */
+          linear-gradient(180deg, #0a0a0a 0%, #050505 55%, #020202 100%) !important;
+        background-size:
+          100% 100%,
+          40px 40px,
+          40px 40px,
+          100% 100%;
+        background-position:
+          0 0, -1px -1px, -1px -1px, 0 0;
+        position: absolute;
+        inset: 0;
+        perspective: 800px;
+        transform-style: preserve-3d;
+      }
+      /* Add a tilted floor "horizon" overlay using a pseudo-element to
+         give the grid the expected three-quarter perspective the real
+         editor's PerspectiveCamera produces. */
+      #vw-scene.vw-scene::before {
+        content: "";
+        position: absolute;
+        inset: 30% 0 0 0;
+        background:
+          linear-gradient(rgba(48,48,48,0.42) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(48,48,48,0.42) 1px, transparent 1px);
+        background-size: 48px 48px;
+        transform: rotateX(58deg) scaleY(1.6);
+        transform-origin: top center;
+        pointer-events: none;
+      }
+      /* The selected vial proxy gizmo — gold dashed outline with a
+         transform-handle nub. Mirrors the TransformControls helper. */
+      #vw-scene.vw-scene::after {
+        content: "";
+        position: absolute;
+        left: 55%;
+        top: 56%;
+        width: 56px;
+        height: 92px;
+        border: 1.5px dashed #f5d76e;
+        background: rgba(245,215,110,0.10);
+        box-shadow: 0 0 24px rgba(245,215,110,0.25), inset 0 0 12px rgba(245,215,110,0.18);
+        transform: translate(-50%, -50%);
+      }
+      /* Sample mesh primitives: a gold arm cluster, a blue cam marker,
+         a gray box. CSS-positioned absolute divs over the grid. */
+      .vw-mesh {
+        position: absolute;
+        pointer-events: none;
+      }
+      .vw-mesh-arm {
+        left: 32%; top: 48%;
+        width: 90px; height: 160px;
+        background:
+          linear-gradient(180deg, #d8bd55 0%, #b89a3f 100%);
+        clip-path: polygon(35% 0, 65% 0, 75% 35%, 85% 65%, 65% 100%, 35% 100%, 15% 65%, 25% 35%);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      }
+      .vw-mesh-cam {
+        left: 72%; top: 50%;
+        width: 36px; height: 36px;
+        background: #5aa9d8;
+        clip-path: polygon(0 30%, 70% 30%, 100% 0, 100% 100%, 70% 70%, 0 70%);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.55);
+      }
+      .vw-mesh-box {
+        left: 44%; top: 64%;
+        width: 64px; height: 64px;
+        background: #8d8d8d;
+        transform: skewY(-12deg);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+      }
+      .vw-scene-shell { position: relative; }
+      .vw-scene::after {
+        content: "";
+        position: absolute;
+        left: 56%;
+        top: 48%;
+        width: 90px;
+        height: 90px;
+        border: 1.5px dashed #f5d76e;
+        background: rgba(245,215,110,0.05);
+        transform: translate(-50%, -50%) rotate(15deg);
+        box-shadow: 0 0 24px rgba(245,215,110,0.2);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app vw-app">
+      <header class="appbar" id="vw-appbar">
+        <div class="appbar-drag-left"></div>
+        <div class="appbar-group left">
+          <button class="icon-btn tab-btn active" data-vw-lhs="toolbox" title="Toolbox">
+            <svg viewBox="0 0 16 16" width="14" height="14"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn tab-btn" data-vw-lhs="assets" title="Assets">
+            <svg viewBox="0 0 16 16" width="14" height="14"><path d="M3 4.5h10M3 8h10M3 11.5h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="appbar-title">
+          <span class="brand-mark"></span>
+          <span class="appbar-title-text">world editor</span>
+          <div class="status-pill active">
+            <span class="status-dot"></span>
+            <span class="status-text">bench_world_v3</span>
+          </div>
+          <div class="status-pill">
+            <span class="status-text">6 entities · 1 robot</span>
+          </div>
+        </div>
+        <div class="appbar-group right">
+          <button class="icon-btn active" data-vw-transform="translate" title="Move selected object">
+            <svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 1.8v12.4M1.8 8h12.4M8 1.8L5.8 4M8 1.8L10.2 4M8 14.2L5.8 12M8 14.2l2.2-2.2M1.8 8L4 5.8M1.8 8L4 10.2M14.2 8L12 5.8M14.2 8L12 10.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn" data-vw-transform="rotate" title="Rotate selected object">
+            <svg viewBox="0 0 16 16" width="14" height="14"><path d="M12.5 5.2A5 5 0 1 0 13 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M12.5 2.5v2.8H9.7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <span class="appbar-sep"></span>
+          <button class="icon-btn tab-btn" data-vw-rhs="world">
+            <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+          <button class="icon-btn tab-btn active" data-vw-rhs="selected">
+            <svg viewBox="0 0 16 16" width="14" height="14"><path d="M3 3h10v10H3z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+        </div>
+        <div class="appbar-drag-right"></div>
+      </header>
+      <section class="workspace vw-workspace">
+        <aside class="sidebar vw-sidebar lhs">
+          <section class="sidebar-pane active" data-vw-pane="toolbox">
+            <div class="pane-head">
+              <h2>Toolbox</h2>
+              <span class="panel-hint">drag into scene</span>
+            </div>
+            <div class="pane-body">
+              <section class="pane-section vw-group">
+                <h2>Robot</h2>
+                <button class="vw-tool" data-create="arm">+ SO-101 arm</button>
+              </section>
+              <section class="pane-section vw-group">
+                <h2>Sensors</h2>
+                <button class="vw-tool" data-create="camera">+ Camera</button>
+              </section>
+              <section class="pane-section vw-group">
+                <h2>Lighting</h2>
+                <button class="vw-tool" data-create="light">+ Light</button>
+              </section>
+              <section class="pane-section vw-group">
+                <h2>Rigid bodies</h2>
+                <button class="vw-tool" data-create="box">+ Box</button>
+                <button class="vw-tool" data-create="vial">+ Vial proxy</button>
+              </section>
+            </div>
+          </section>
+        </aside>
+        <section class="main-area vw-scene-shell">
+          <div id="vw-scene" class="vw-scene">
+            <div class="vw-mesh vw-mesh-arm" title="SO-101"></div>
+            <div class="vw-mesh vw-mesh-cam" title="cam"></div>
+            <div class="vw-mesh vw-mesh-box" title="rigid"></div>
+          </div>
+        </section>
+        <aside class="sidebar vw-sidebar rhs">
+          <section class="sidebar-pane active" data-vw-pane="selected">
+            <div class="pane-head">
+              <h2>Selected</h2>
+              <span class="panel-hint">transform</span>
+            </div>
+            <div class="pane-body">
+              <section class="pane-section">
+                <div id="vw-selected-form">
+                  <div class="vw-field">
+                    <label for="vw-object-name">Name</label>
+                    <input id="vw-object-name" value="UNK_3 vial proxy" />
+                  </div>
+                  <div class="vw-grid3">
+                    <input id="vw-pos-x" type="number" step="0.01" value="0.18" />
+                    <input id="vw-pos-y" type="number" step="0.01" value="0.02" />
+                    <input id="vw-pos-z" type="number" step="0.01" value="0.04" />
+                  </div>
+                  <div class="vw-grid3">
+                    <input id="vw-roll" type="number" step="1" value="0" />
+                    <input id="vw-pitch" type="number" step="1" value="0" />
+                    <input id="vw-yaw" type="number" step="1" value="45" />
+                  </div>
+                  <label class="vw-check"><input id="vw-collision" type="checkbox" checked /> Collision</label>
+                  <button id="vw-save-object" class="primary">Save object</button>
+                  <button id="vw-delete-object" class="ghost">Remove</button>
+                </div>
+              </section>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>

@@ -11,7 +11,5 @@ Config.setEntryPoint("./src/index.ts");
 // Three.js needs a real GL backend. "angle-egl" works on macOS and Linux;
 // switch to "swangle" if rendering inside Remotion Lambda.
 Config.setChromiumOpenGlRenderer("angle-egl");
-// Treat the project root as the public dir so staticFile() can read from
-// the existing video/audio and video/assets directories without us having
-// to shuffle everything into video/public/.
-Config.setPublicDir(".");
+// Default public dir (public/) holds audio/, assets/, and electron/ —
+// staticFile() will resolve relative to that.

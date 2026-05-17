@@ -214,7 +214,7 @@ function render(): void {
   }
   renderAssets();
   renderSelected();
-  window.dispatchEvent(new CustomEvent("vw:state", { detail: { world, entities, selectedId } }));
+  window.dispatchEvent(new CustomEvent("vw:state", { detail: { world, entities, selectedId, transformMode } }));
 }
 
 function renderAssets(): void {

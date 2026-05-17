@@ -34,11 +34,21 @@
         </div>
 
         <div class="appbar-title">
-          <span class="brand-mark"></span>
-          <span class="appbar-title-text">chem-0</span>
-          <div class="status-pill" id="active-experiment">
-            <span class="status-dot"></span>
-            <span class="status-text">No experiment</span>
+          <div class="appbar-selector-group" aria-label="Current experiment and world">
+            <div class="appbar-picker">
+              <button id="experiment-picker-button" class="appbar-picker-button" type="button" aria-haspopup="menu" aria-expanded="false">
+                <span class="picker-kicker">Experiment</span>
+                <span id="active-experiment" class="picker-value">No experiment</span>
+              </button>
+              <div id="experiment-picker-menu" class="appbar-menu" role="menu" hidden></div>
+            </div>
+            <div class="appbar-picker">
+              <button id="world-picker-button" class="appbar-picker-button" type="button" aria-haspopup="menu" aria-expanded="false">
+                <span class="picker-kicker">World</span>
+                <span id="active-world" class="picker-value">Default physical world</span>
+              </button>
+              <div id="world-picker-menu" class="appbar-menu" role="menu" hidden></div>
+            </div>
           </div>
         </div>
 
@@ -291,6 +301,7 @@
         }
       }
     </script>
+    <script type="module" src="./virtual-camera-streams.mjs"></script>
     <script type="module" src="./main3d.mjs"></script>
   </body>
 </html>

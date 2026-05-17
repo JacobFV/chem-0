@@ -1,0 +1,66 @@
+<!doctype html>
+<!--
+  Static demo build of src/apps/electron/src/renderer/calibration.html.
+  Same markup, same stylesheet. The live URDF viewer canvas is replaced
+  with a background image (calibration_endpoint.png) so the scene reads
+  without booting Three.js inside the iframe. The "step" overlay is left
+  on (the wizard's normal mid-flow state) with five-of-six dots filled.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chem-0 Calibration</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      ::-webkit-scrollbar { width: 0; height: 0; }
+      html, body { width: 1720px; height: 862px; }
+      /* The real wizard hosts a live URDF viewer here. For the static
+         build we paint a moody gradient so the overlay text reads — the
+         actual mesh of the arm gets composited in by SceneCalibration
+         outside the iframe (via Remotion's Img component, which handles
+         the public-folder hash). */
+      /* Background of the URDF viewer is the real SO-101 photo. Sibling
+         path keeps the URL resolution simple inside the iframe and away
+         from Remotion's hashed public-asset URLs. */
+      .urdf-viewer-fullscreen {
+        background: #000 url("./calibration_endpoint.png") center/cover no-repeat;
+        filter: brightness(0.62) saturate(0.7);
+      }
+      .progress-dot.is-done {
+        background: var(--accent);
+        box-shadow: 0 0 12px rgba(245,215,110,0.6);
+      }
+      .progress-dot.is-current {
+        background: var(--accent-soft);
+        outline: 1.5px solid var(--accent);
+      }
+      .progress-dot {
+        width: 10px; height: 10px; border-radius: 10px;
+        background: #222;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="calibration-app calibration-immersive">
+      <div id="urdf-viewer" class="urdf-viewer-fullscreen"></div>
+
+      <section id="step-overlay" class="overlay-bottom">
+        <div id="progress-dots" class="progress-dots">
+          <span class="progress-dot is-done"></span>
+          <span class="progress-dot is-done"></span>
+          <span class="progress-dot is-done"></span>
+          <span class="progress-dot is-done"></span>
+          <span class="progress-dot is-current"></span>
+          <span class="progress-dot"></span>
+        </div>
+        <div class="step-cue">
+          <span id="cue-arrow" class="step-arrow" aria-hidden="true">↑</span>
+          <h2 id="cue-verb" class="step-verb pulse">Lift to Z-two endpoint</h2>
+        </div>
+        <div id="step-status" class="step-status">step 05 / 06 · arm mcp_so101 · bus /dev/cu.usbmodem5AB01815731</div>
+        <button id="step-button" class="step-button">RECORD</button>
+      </section>
+    </main>
+  </body>
+</html>

@@ -6,11 +6,17 @@ export {};
 type Chem0Api = {
   callTool: (name: string, args?: JsonObject) => Promise<JsonObject>;
   platform: string;
+  getSettings: () => Promise<JsonObject>;
+  onSettingsChanged: (callback: (settings: JsonObject) => void) => () => void;
 };
 
 const chem0 = (window as unknown as { chem0: Chem0Api }).chem0;
 
 window.Chem0Shell.applyPlatformClass(chem0?.platform);
+window.Chem0Shell.installThemeSync({
+  getSettings: () => chem0.getSettings(),
+  onSettingsChanged: (handler) => chem0.onSettingsChanged(handler)
+});
 
 const params = new URLSearchParams(window.location.search);
 const worldId = params.get("world_id") ?? "";

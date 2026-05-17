@@ -66,7 +66,7 @@
   top: 0;
   z-index: 1000;
   border: 1px solid var(--accent);
-  background: rgba(0, 0, 0, 0.86);
+  background: var(--bg-0);
   color: var(--accent);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -85,14 +85,17 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #030303;
+  background: var(--bg-1);
 }
 
 .vw-scene {
   position: absolute;
   inset: 0;
-  background: #000;
+  background: var(--bg-0);
 }
+
+[data-theme="dark"] .vw-scene-shell { background: #030303; }
+[data-theme="dark"] .vw-scene { background: #000; }
 
 .vw-scene canvas {
   position: absolute;
@@ -109,7 +112,7 @@
   z-index: 3;
   border: 1px solid var(--danger);
   color: var(--danger);
-  background: rgba(0, 0, 0, 0.76);
+  background: var(--bg-0);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
@@ -126,7 +129,7 @@
   z-index: 3;
   border: 1px solid var(--border-2);
   color: var(--text-2);
-  background: rgba(0, 0, 0, 0.76);
+  background: var(--bg-0);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.1em;

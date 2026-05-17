@@ -46,10 +46,43 @@ function installOrbitControls(element, state, update) {
   });
 }
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x020202);
+const PALETTE = {
+  light: {
+    bg: 0xf2f3f5,
+    floor: 0xe4e4e7,
+    gridA: 0xb0b0b3,
+    gridB: 0xd0d0d3,
+    rigid: 0xc0c0c0,
+    arm: 0xd8bd55,
+    wire: 0x3f3f46,
+    hemiSky: 0xffffff,
+    hemiGround: 0xc7c8cb,
+    hemiI: 1.1,
+    keyI: 0.85
+  },
+  dark: {
+    bg: 0x020202,
+    floor: 0x1a1a1a,
+    gridA: 0x303030,
+    gridB: 0x151515,
+    rigid: 0x8d8d8d,
+    arm: 0xd8bd55,
+    wire: 0xcccccc,
+    hemiSky: 0xffffff,
+    hemiGround: 0x202020,
+    hemiI: 1.2,
+    keyI: 1.0
+  }
+};
 
-const camera = new THREE.PerspectiveCamera(48, 1, 0.01, 20);
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(PALETTE[currentTheme()].bg);
+
+const camera = new THREE.PerspectiveCamera(62, 1, 0.01, 20);
 const orbit = {
   target: new THREE.Vector3(0, 0, 0.08),
   radius: 1.45,
@@ -64,6 +97,8 @@ updateOrbitCamera();
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(window.devicePixelRatio || 1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 root.append(renderer.domElement);
 installOrbitControls(renderer.domElement, orbit, updateOrbitCamera);
 
@@ -82,22 +117,37 @@ rotateTransform.setSpace("local");
 rotateTransform.setSize(0.95);
 scene.add(rotateTransform.getHelper());
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x202020, 1.4));
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x202020, 1.2);
+scene.add(hemiLight);
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
 keyLight.position.set(1.3, -1.1, 1.4);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.near = 0.1;
+keyLight.shadow.camera.far = 6;
+keyLight.shadow.camera.left = -1.0;
+keyLight.shadow.camera.right = 1.0;
+keyLight.shadow.camera.top = 1.0;
+keyLight.shadow.camera.bottom = -1.0;
+keyLight.shadow.bias = -0.0005;
+keyLight.shadow.normalBias = 0.02;
+keyLight.shadow.radius = 4;
 scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.25);
+fillLight.position.set(-1.0, 1.2, 0.8);
+scene.add(fillLight);
 
 const FLOOR_Z = 0;
 const GRAVITY_M_PER_FRAME = 0.006;
 const CONTACT_EPSILON_M = 0.0005;
 const FLOOR_SIZE_M = 1.6;
-const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85, metalness: 0.02 });
+const floorMaterial = new THREE.MeshStandardMaterial({ color: PALETTE[currentTheme()].floor, roughness: 0.92, metalness: 0.02 });
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(FLOOR_SIZE_M, FLOOR_SIZE_M), floorMaterial);
 floor.receiveShadow = true;
 floor.position.z = FLOOR_Z;
 scene.add(floor);
 
-const grid = new THREE.GridHelper(1.2, 24, 0x303030, 0x151515);
+let grid = new THREE.GridHelper(1.2, 24, PALETTE[currentTheme()].gridA, PALETTE[currentTheme()].gridB);
 grid.rotation.x = Math.PI / 2;
 grid.position.z = FLOOR_Z + 0.001;
 scene.add(grid);
@@ -120,13 +170,36 @@ let lastPhysicsChangeMs = 0;
 const physicsDirtyIds = new Set();
 
 const materials = {
-  arm: new THREE.MeshStandardMaterial({ color: 0xd8bd55, roughness: 0.55 }),
+  arm: new THREE.MeshStandardMaterial({ color: PALETTE[currentTheme()].arm, roughness: 0.55 }),
   camera: new THREE.MeshStandardMaterial({ color: 0x5aa9d8, roughness: 0.5 }),
   light: new THREE.MeshStandardMaterial({ color: 0xf0e7a2, emissive: 0x5c511d, roughness: 0.35 }),
-  rigid_body: new THREE.MeshStandardMaterial({ color: 0x8d8d8d, roughness: 0.7 }),
+  rigid_body: new THREE.MeshStandardMaterial({ color: PALETTE[currentTheme()].rigid, roughness: 0.7 }),
   selected: new THREE.MeshStandardMaterial({ color: 0xf5d76e, roughness: 0.45 }),
   collision: new THREE.MeshStandardMaterial({ color: 0xff4f4f, roughness: 0.5 })
 };
+
+function applyThemePalette() {
+  const p = PALETTE[currentTheme()];
+  scene.background = new THREE.Color(p.bg);
+  floorMaterial.color.setHex(p.floor);
+  hemiLight.intensity = p.hemiI;
+  keyLight.intensity = p.keyI;
+  materials.arm.color.setHex(p.arm);
+  materials.rigid_body.color.setHex(p.rigid);
+  scene.remove(grid);
+  grid = new THREE.GridHelper(1.2, 24, p.gridA, p.gridB);
+  grid.rotation.x = Math.PI / 2;
+  grid.position.z = FLOOR_Z + 0.001;
+  scene.add(grid);
+  for (const group of objects.values()) {
+    if (group.userData.recolorWire) group.userData.recolorWire();
+  }
+}
+
+new MutationObserver(() => applyThemePalette()).observe(document.documentElement, {
+  attributes: true,
+  attributeFilter: ["data-theme"]
+});
 
 function axisCenter(object) {
   if (!object.geometry) return new THREE.Vector3();
@@ -361,7 +434,7 @@ function setGroupPose(group, entity) {
 
 function applyMaterial(group, material) {
   group.traverse((node) => {
-    if (node.isMesh) node.material = material;
+    if (node.isMesh && !node.userData.isCameraHitbox) node.material = material;
   });
 }
 
@@ -373,13 +446,68 @@ function boxMesh(size, material) {
   return mesh;
 }
 
-function makeCamera() {
+function makeCamera(entity) {
+  return buildCameraWireframe(entity);
+}
+
+function buildCameraWireframe(entity) {
+  const spec = entitySpec(entity ?? {});
+  const fovDeg = Number(spec?.fov_degrees) || 75;
+  const len = 0.07;
+  const halfFov = THREE.MathUtils.degToRad(fovDeg) / 2;
+  const w = Math.tan(halfFov) * len;
+  const aspect = 16 / 9;
+  const h = w / aspect;
+
+  // forward = -Y in this scene's camera convention (cameraFromEntity rotates -90° on X).
+  const apex = [0, 0, 0];
+  const ftr = [ w, -len,  h];
+  const ftl = [-w, -len,  h];
+  const fbr = [ w, -len, -h];
+  const fbl = [-w, -len, -h];
+
+  // "up" indicator triangle on top of the frustum (Blender camera style).
+  const tipUp = [0, -len * 0.55,  h * 1.85];
+  const baseUpL = [-w * 0.55, -len * 0.35,  h * 1.05];
+  const baseUpR = [ w * 0.55, -len * 0.35,  h * 1.05];
+
+  const positions = new Float32Array([
+    // frustum edges from apex
+    ...apex, ...ftr,
+    ...apex, ...ftl,
+    ...apex, ...fbr,
+    ...apex, ...fbl,
+    // far rectangle
+    ...ftr, ...ftl,
+    ...ftl, ...fbl,
+    ...fbl, ...fbr,
+    ...fbr, ...ftr,
+    // up triangle
+    ...baseUpL, ...baseUpR,
+    ...baseUpR, ...tipUp,
+    ...tipUp,   ...baseUpL
+  ]);
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const lineMat = new THREE.LineBasicMaterial({ color: PALETTE[currentTheme()].wire });
+  const lines = new THREE.LineSegments(geom, lineMat);
+
+  // Invisible hitbox so picking still works on the camera.
+  const hitGeom = new THREE.BoxGeometry(w * 2.2, len * 1.1, h * 2.4);
+  const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+  const hitbox = new THREE.Mesh(hitGeom, hitMat);
+  hitbox.position.y = -len / 2;
+  hitbox.userData.isCameraHitbox = true;
+
   const group = new THREE.Group();
-  const body = boxMesh({ x: 0.045, y: 0.035, z: 0.025 }, materials.camera);
-  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.02, 18), materials.camera);
-  lens.rotation.x = Math.PI / 2;
-  lens.position.y = -0.026;
-  group.add(body, lens);
+  group.add(lines, hitbox);
+  group.userData.cameraLines = lines;
+  group.userData.cameraLineMat = lineMat;
+  group.userData.recolorWire = (overrideHex) => {
+    const target = overrideHex ?? PALETTE[currentTheme()].wire;
+    lineMat.color.setHex(target);
+  };
   return group;
 }
 
@@ -462,6 +590,10 @@ async function rebuild(state) {
       if (node.isMesh) {
         node.userData.entityId = id;
         pickables.push(node);
+        if (!node.userData.isCameraHitbox) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+        }
       }
     });
   }
@@ -599,11 +731,21 @@ function collisionPairs() {
 function updateCollisions() {
   const collisions = collisionPairs();
   for (const entity of entities) {
-    const group = objects.get(String(entity.id));
+    const id = String(entity.id);
+    const group = objects.get(id);
     if (!group) continue;
-    if (collisions.has(String(entity.id))) applyMaterial(group, materials.collision);
-    else if (String(entity.id) === selectedId) applyMaterial(group, materials.selected);
-    else applyMaterial(group, materials[String(entity.kind)] || materials.rigid_body);
+    const isCollision = collisions.has(id);
+    const isSelected = id === selectedId;
+    if (group.userData.recolorWire) {
+      const wireOverride = isCollision ? 0xff4f4f : isSelected ? 0xf5d76e : undefined;
+      group.userData.recolorWire(wireOverride);
+    } else if (isCollision) {
+      applyMaterial(group, materials.collision);
+    } else if (isSelected) {
+      applyMaterial(group, materials.selected);
+    } else {
+      applyMaterial(group, materials[String(entity.kind)] || materials.rigid_body);
+    }
   }
   if (banner) banner.hidden = collisions.size === 0;
 }

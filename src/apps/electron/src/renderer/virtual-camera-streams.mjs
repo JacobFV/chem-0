@@ -34,21 +34,46 @@ function applyPose(object, entity) {
   );
 }
 
+const STREAM_PALETTE = {
+  light: { bg: 0xf2f3f5, floor: 0xe4e4e7, gridA: 0xb0b0b3, gridB: 0xd0d0d3, rigid: 0xc0c0c0, arm: 0xd8bd55, wire: 0x3f3f46, hemiI: 1.0, keyI: 0.85 },
+  dark:  { bg: 0x020202, floor: 0x1a1a1a, gridA: 0x303030, gridB: 0x151515, rigid: 0x8d8d8d, arm: 0xd8bd55, wire: 0xcccccc, hemiI: 1.2, keyI: 1.0 }
+};
+
+function streamTheme() {
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}
+
+function makeCameraWireframe(entity) {
+  const spec = specOf(entity);
+  const fovDeg = Number(spec.fov_degrees) || 75;
+  const len = 0.07;
+  const halfFov = THREE.MathUtils.degToRad(fovDeg) / 2;
+  const w = Math.tan(halfFov) * len;
+  const h = w / (16 / 9);
+  const apex = [0, 0, 0];
+  const ftr = [ w, -len,  h];
+  const ftl = [-w, -len,  h];
+  const fbr = [ w, -len, -h];
+  const fbl = [-w, -len, -h];
+  const tipUp = [0, -len * 0.55, h * 1.85];
+  const baseUpL = [-w * 0.55, -len * 0.35, h * 1.05];
+  const baseUpR = [ w * 0.55, -len * 0.35, h * 1.05];
+  const positions = new Float32Array([
+    ...apex, ...ftr, ...apex, ...ftl, ...apex, ...fbr, ...apex, ...fbl,
+    ...ftr, ...ftl, ...ftl, ...fbl, ...fbl, ...fbr, ...fbr, ...ftr,
+    ...baseUpL, ...baseUpR, ...baseUpR, ...tipUp, ...tipUp, ...baseUpL
+  ]);
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  return new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ color: STREAM_PALETTE[streamTheme()].wire }));
+}
+
 function makeEntityMesh(entity) {
   const kind = String(entity.kind);
   const group = new THREE.Group();
+  const palette = STREAM_PALETTE[streamTheme()];
   if (kind === "camera") {
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.045, 0.035, 0.025),
-      new THREE.MeshStandardMaterial({ color: 0x5aa9d8, roughness: 0.5 })
-    );
-    const lens = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.012, 0.018, 0.02, 18),
-      new THREE.MeshStandardMaterial({ color: 0x77c8ff, roughness: 0.45 })
-    );
-    lens.rotation.x = Math.PI / 2;
-    lens.position.y = -0.026;
-    group.add(body, lens);
+    group.add(makeCameraWireframe(entity));
   } else if (kind === "light") {
     const bulb = new THREE.Mesh(
       new THREE.SphereGeometry(0.025, 20, 12),
@@ -57,7 +82,7 @@ function makeEntityMesh(entity) {
     const light = new THREE.PointLight(0xffffff, 1, 2);
     group.add(bulb, light);
   } else if (kind === "arm") {
-    const material = new THREE.MeshStandardMaterial({ color: 0xd8bd55, roughness: 0.58 });
+    const material = new THREE.MeshStandardMaterial({ color: palette.arm, roughness: 0.58 });
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.04, 24), material);
     const lower = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.16, 0.035), material);
     lower.position.set(0, 0.06, 0.09);
@@ -65,15 +90,20 @@ function makeEntityMesh(entity) {
     const upper = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.14, 0.032), material);
     upper.position.set(0, 0.12, 0.18);
     upper.rotation.x = 0.5;
+    base.castShadow = base.receiveShadow = true;
+    lower.castShadow = lower.receiveShadow = true;
+    upper.castShadow = upper.receiveShadow = true;
     group.add(base, lower, upper);
   } else {
     const spec = specOf(entity);
     const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.05, 0.05, 0.05];
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(dims[0] || 0.05, dims[1] || 0.05, dims[2] || 0.05),
-      new THREE.MeshStandardMaterial({ color: 0x8d8d8d, roughness: 0.7 })
+      new THREE.MeshStandardMaterial({ color: palette.rigid, roughness: 0.7 })
     );
     mesh.position.z = (dims[2] || 0.05) / 2;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     group.add(mesh);
   }
   applyPose(group, entity);
@@ -81,20 +111,35 @@ function makeEntityMesh(entity) {
 }
 
 function buildScene(worldEntities, activeCameraId) {
+  const palette = STREAM_PALETTE[streamTheme()];
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x020202);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x202020, 1.2));
-  const key = new THREE.DirectionalLight(0xffffff, 1);
+  scene.background = new THREE.Color(palette.bg);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x202020, palette.hemiI));
+  const key = new THREE.DirectionalLight(0xffffff, palette.keyI);
   key.position.set(1.3, -1.1, 1.4);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.camera.near = 0.1;
+  key.shadow.camera.far = 6;
+  key.shadow.camera.left = -1.0;
+  key.shadow.camera.right = 1.0;
+  key.shadow.camera.top = 1.0;
+  key.shadow.camera.bottom = -1.0;
+  key.shadow.bias = -0.0005;
+  key.shadow.normalBias = 0.02;
+  key.shadow.radius = 3;
   scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+  fill.position.set(-1.0, 1.2, 0.8);
+  scene.add(fill);
 
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(1.6, 1.6),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85, metalness: 0.02 })
+    new THREE.MeshStandardMaterial({ color: palette.floor, roughness: 0.92, metalness: 0.02 })
   );
   floor.receiveShadow = true;
   scene.add(floor);
-  const grid = new THREE.GridHelper(1.2, 24, 0x303030, 0x151515);
+  const grid = new THREE.GridHelper(1.2, 24, palette.gridA, palette.gridB);
   grid.rotation.x = Math.PI / 2;
   grid.position.z = 0.001;
   scene.add(grid);
@@ -108,7 +153,7 @@ function buildScene(worldEntities, activeCameraId) {
 
 function cameraFromEntity(entity, canvas) {
   const spec = specOf(entity);
-  const fov = Number(spec.fov_degrees) || 60;
+  const fov = Number(spec.fov_degrees) || 75;
   const camera = new THREE.PerspectiveCamera(fov, Math.max(1, canvas.width) / Math.max(1, canvas.height), 0.01, 20);
   applyPose(camera, entity);
   camera.rotateX(-Math.PI / 2);
@@ -121,6 +166,8 @@ function rendererFor(canvas) {
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderers.set(canvas, renderer);
     return renderer;
   } catch (error) {
@@ -233,5 +280,10 @@ window.addEventListener("chem0:world-selected", (event) => {
   selectedWorldId = String(event.detail?.worldId || selectedWorldId);
   lastRefreshMs = 0;
 });
+
+new MutationObserver(() => {
+  // Force re-render on next animate tick by clearing the per-canvas timestamp.
+  for (const canvas of renderers.keys()) lastRenderByCanvas.set(canvas, 0);
+}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
 void animate();

@@ -6,6 +6,7 @@ const JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wr
 const robotViews = new Map();
 
 let robotAsset = null;
+let selectedWorldId = document.body.dataset.worldId || "world_physical_default";
 
 function textFromTool(result) {
   const content = result.content;
@@ -265,8 +266,27 @@ async function createRobotView(robot) {
 
 async function refreshRobotViews() {
   if (!rootEl || !window.chem0) return;
-  const parsed = parseToolJson(await window.chem0.callTool("list_connected_robots", { max_id: 12 }));
-  const robots = Array.isArray(parsed.robots) ? parsed.robots.filter((robot) => robot.looks_like_so101) : [];
+  const [parsed, worldState] = await Promise.all([
+    window.chem0.callTool("list_connected_robots", { max_id: 12 }).then(parseToolJson),
+    window.chem0.callTool("list_worlds", {})
+  ]);
+  const selectedWorld = Array.isArray(worldState.worlds)
+    ? worldState.worlds.find((world) => String(world.id) === selectedWorldId)
+    : null;
+  const assignments = Array.isArray(worldState.assignments) ? worldState.assignments : [];
+  const assignedRobotIds = new Set(
+    assignments
+      .filter((item) => String(item.world_id) === selectedWorldId)
+      .map((item) => String(item.robot_id))
+  );
+  const robots = Array.isArray(parsed.robots)
+    ? parsed.robots.filter((robot) => {
+        if (!robot.looks_like_so101) return false;
+        const robotId = String(robot.suggested_robot_id ?? robot.robot_id ?? "");
+        if (assignedRobotIds.size > 0) return assignedRobotIds.has(robotId);
+        return String(selectedWorld?.type ?? "physical") === "physical";
+      })
+    : [];
   const ports = new Set(robots.map((robot) => robot.port));
   for (const [port, view] of robotViews) {
     if (ports.has(port)) continue;
@@ -276,6 +296,12 @@ async function refreshRobotViews() {
   }
   for (const robot of robots) await createRobotView(robot);
 }
+
+window.addEventListener("chem0:world-selected", (event) => {
+  const detail = event.detail || {};
+  selectedWorldId = String(detail.worldId || selectedWorldId);
+  void refreshRobotViews();
+});
 
 async function pollPoses() {
   for (const view of robotViews.values()) {

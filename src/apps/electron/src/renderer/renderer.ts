@@ -67,13 +67,18 @@ const createVirtualArmBtn = document.querySelector<HTMLButtonElement>("#create-v
 const setDefaultRobot = document.querySelector<HTMLButtonElement>("#set-default-robot")!;
 const refreshRobotsBtn = document.querySelector<HTMLButtonElement>("#refresh-robots")!;
 const refreshArtifactsBtn = document.querySelector<HTMLButtonElement>("#refresh-artifacts")!;
-const activeExperiment = document.querySelector<HTMLDivElement>("#active-experiment")!;
-const activeExperimentText = activeExperiment.querySelector<HTMLSpanElement>(".status-text") ?? activeExperiment;
+const activeExperiment = document.querySelector<HTMLSpanElement>("#active-experiment")!;
+const activeWorld = document.querySelector<HTMLSpanElement>("#active-world")!;
+const experimentPickerButton = document.querySelector<HTMLButtonElement>("#experiment-picker-button")!;
+const experimentPickerMenu = document.querySelector<HTMLDivElement>("#experiment-picker-menu")!;
+const worldPickerButton = document.querySelector<HTMLButtonElement>("#world-picker-button")!;
+const worldPickerMenu = document.querySelector<HTMLDivElement>("#world-picker-menu")!;
 const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
 const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
 const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
 const recordAudio = document.querySelector<HTMLButtonElement>("#record-audio")!;
 const phCanvas = document.querySelector<HTMLCanvasElement>("#ph-canvas");
+const camerasStrip = document.querySelector<HTMLDivElement>(".cameras-strip")!;
 const workspace = document.querySelector<HTMLDivElement>(".workspace")!;
 const lhsSidebar = document.querySelector<HTMLElement>("#sidebar-lhs")!;
 const rhsSidebar = document.querySelector<HTMLElement>("#sidebar-rhs")!;
@@ -86,6 +91,11 @@ const camVideos: (HTMLVideoElement | null)[] = [
   document.querySelector<HTMLVideoElement>("#cam-2"),
 ];
 const camStreams: (MediaStream | null)[] = [null, null, null];
+let activeBrowserCameraIds = new Set<number>();
+const virtualCameraCells = new Map<string, HTMLElement>();
+let physicalCameraWorldAssignments: Record<string, string> = JSON.parse(
+  localStorage.getItem("chem0:physical-camera-worlds") ?? "{}"
+) as Record<string, string>;
 
 let experimentId = "";
 let sessionId = "";
@@ -136,8 +146,19 @@ document.addEventListener("keydown", (event) => {
 });
 
 function setActiveExperimentLabel(text: string, active: boolean): void {
-  activeExperimentText.textContent = text;
-  activeExperiment.classList.toggle("active", active);
+  activeExperiment.textContent = text;
+  experimentPickerButton.classList.toggle("active", active);
+}
+
+function setActiveWorldLabel(): void {
+  const world = selectedWorld();
+  const name = String(world?.name ?? selectedWorldId);
+  const type = String(world?.type ?? "world");
+  activeWorld.textContent = `${name} · ${type}`;
+  worldPickerButton.classList.toggle("active", Boolean(world));
+  document.body.dataset.worldId = selectedWorldId;
+  document.body.dataset.worldType = type;
+  window.dispatchEvent(new CustomEvent("chem0:world-selected", { detail: { worldId: selectedWorldId, worldType: type } }));
 }
 
 function show(value: unknown): void {
@@ -158,10 +179,11 @@ function setActive(experiment: JsonObject, session?: JsonObject): void {
   worldSelect.value = selectedWorldId;
   syncSelectedWorldState();
   setActiveExperimentLabel(
-    experimentId ? `${String(experiment.name ?? "Experiment")} · ${experimentId}` : "No experiment",
+    experimentId ? String(experiment.name ?? "Experiment") : "No experiment",
     Boolean(experimentId)
   );
   updateExperimentsListSelection();
+  renderPickerMenus();
   updateNotesPane();
 }
 
@@ -305,6 +327,83 @@ function renderEvents(events: JsonObject[]): void {
   drawPhChart();
 }
 
+function closeAppbarMenus(): void {
+  experimentPickerMenu.hidden = true;
+  worldPickerMenu.hidden = true;
+  experimentPickerButton.setAttribute("aria-expanded", "false");
+  worldPickerButton.setAttribute("aria-expanded", "false");
+}
+
+function menuButton(label: string, sub: string, active: boolean, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "appbar-menu-item";
+  button.classList.toggle("active", active);
+  const title = document.createElement("span");
+  title.className = "appbar-menu-title";
+  title.textContent = label;
+  const meta = document.createElement("span");
+  meta.className = "appbar-menu-meta";
+  meta.textContent = sub;
+  button.append(title, meta);
+  button.addEventListener("click", () => {
+    closeAppbarMenus();
+    onClick();
+  });
+  return button;
+}
+
+function renderPickerMenus(): void {
+  experimentPickerMenu.replaceChildren();
+  for (const experiment of experimentsCache) {
+    const id = String(experiment.id ?? "");
+    const world = worldsCache.find((item) => String(item.id) === String(experiment.world_id ?? ""));
+    experimentPickerMenu.append(menuButton(
+      String(experiment.name ?? "Untitled"),
+      String(world?.name ?? experiment.world_id ?? id),
+      id === experimentId,
+      () => void selectExperiment(id)
+    ));
+  }
+  if (experimentsCache.length > 0) {
+    const divider = document.createElement("div");
+    divider.className = "appbar-menu-divider";
+    experimentPickerMenu.append(divider);
+  }
+  experimentPickerMenu.append(menuButton("+ New Experiment", "create in current world", false, () => void createExperimentFromCurrentWorld()));
+
+  worldPickerMenu.replaceChildren();
+  for (const world of worldsCache) {
+    const id = String(world.id ?? "");
+    const experimentCount = experimentsCache.filter((experiment) => String(experiment.world_id ?? "") === id).length;
+    worldPickerMenu.append(menuButton(
+      String(world.name ?? id),
+      `${String(world.type ?? "world")} · ${experimentCount} experiment${experimentCount === 1 ? "" : "s"}`,
+      id === selectedWorldId,
+      () => void selectWorld(id, { matchExperiment: true })
+    ));
+  }
+  if (worldsCache.length > 0) {
+    const divider = document.createElement("div");
+    divider.className = "appbar-menu-divider";
+    worldPickerMenu.append(divider);
+  }
+  const newWorld = document.createElement("div");
+  newWorld.className = "appbar-submenu";
+  const label = document.createElement("div");
+  label.className = "appbar-submenu-label";
+  label.textContent = "+ New World";
+  const options = document.createElement("div");
+  options.className = "appbar-submenu-options";
+  options.append(
+    menuButton("Physical World", "hardware bench", false, () => openWorldModal("create", "physical")),
+    menuButton("Virtual World", "simulation", false, () => openWorldModal("create", "virtual"))
+  );
+  newWorld.append(label, options);
+  worldPickerMenu.append(newWorld);
+  setActiveWorldLabel();
+}
+
 function renderExperimentsList(): void {
   experimentsList.replaceChildren();
   if (experimentsCache.length === 0) {
@@ -329,9 +428,7 @@ function renderExperimentsList(): void {
     li.append(title, sub);
     li.addEventListener("click", () => {
       if (id === experimentId) return;
-      setActive(experiment);
-      void loadEvents();
-      void refreshArtifacts();
+      void selectExperiment(id);
     });
     experimentsList.append(li);
   }
@@ -348,17 +445,45 @@ function syncSelectedWorldState(): void {
   worldSelect.value = selectedWorldId;
   const isVirtual = world?.type === "virtual";
   createVirtualArmBtn.disabled = !isVirtual;
-  for (const li of worldsList.querySelectorAll<HTMLLIElement>(".list-item")) {
+  setActiveWorldLabel();
+  updateCameraVisibility(activeBrowserCameraIds);
+  for (const li of worldsList.querySelectorAll<HTMLLIElement>(".world-card")) {
     li.classList.toggle("active", li.dataset.worldId === selectedWorldId);
   }
 }
 
-function worldAssignments(worldId: string): JsonObject[] {
-  return assignmentsCache.filter((item) => String(item.world_id) === worldId);
-}
-
 function worldEntities(worldId: string): JsonObject[] {
   return virtualEntitiesCache.filter((entity) => String(entity.world_id) === worldId);
+}
+
+function savePhysicalCameraAssignments(): void {
+  localStorage.setItem("chem0:physical-camera-worlds", JSON.stringify(physicalCameraWorldAssignments));
+}
+
+function worldType(worldId: string): string {
+  return String(worldsCache.find((world) => String(world.id) === worldId)?.type ?? "");
+}
+
+function assignCameraToWorld(input: { cameraId: string; cameraKind: "physical" | "virtual"; worldId: string }): void {
+  const targetType = worldType(input.worldId);
+  if (input.cameraKind === "virtual") {
+    const entity = virtualEntitiesCache.find((item) => String(item.id) === input.cameraId && item.kind === "camera");
+    if (!entity) throw new Error(`Unknown virtual camera: ${input.cameraId}`);
+    if (String(entity.world_id) !== input.worldId) throw new Error("Virtual cameras stay in the virtual world they were created in.");
+    if (targetType !== "virtual") throw new Error("Virtual cameras can only appear in virtual worlds.");
+    return;
+  }
+  if (targetType !== "physical") throw new Error("Physical cameras can only be assigned to physical worlds.");
+  physicalCameraWorldAssignments[input.cameraId] = input.worldId;
+  savePhysicalCameraAssignments();
+}
+
+function physicalCameraWorldId(slot: number): string {
+  const id = String(slot);
+  const assigned = physicalCameraWorldAssignments[id];
+  if (assigned && worldType(assigned) === "physical") return assigned;
+  assignCameraToWorld({ cameraId: id, cameraKind: "physical", worldId: "world_physical_default" });
+  return "world_physical_default";
 }
 
 function iconSvg(name: "check" | "config" | "edit" | "plus" | "trash" | "x"): string {
@@ -379,132 +504,91 @@ function makeGhostIcon(name: "check" | "config" | "edit" | "plus" | "trash" | "x
   return button;
 }
 
-async function createVirtualCameraInWorld(worldId: string): Promise<void> {
-  const result = await window.chem0.callTool("create_virtual_camera", {
-    world_id: worldId,
-    name: `Camera ${worldEntities(worldId).filter((entity) => entity.kind === "camera").length + 1}`,
-    pose: { x: 0.35, y: -0.35, z: 0.45, roll: 0, pitch: -35, yaw: 45 },
-    spec: { resolution: "1280x720", fov_degrees: 60 }
-  });
-  show(result);
-  await refreshWorlds();
+function drawFallbackPlanet(ctx: CanvasRenderingContext2D, size: number, label: string, hue: number): void {
+  const gradient = ctx.createRadialGradient(size * 0.32, size * 0.28, 4, size * 0.5, size * 0.5, size * 0.72);
+  gradient.addColorStop(0, `hsl(${hue}, 68%, 52%)`);
+  gradient.addColorStop(0.55, `hsl(${(hue + 48) % 360}, 52%, 30%)`);
+  gradient.addColorStop(1, "#050505");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  ctx.font = "500 10px Inter, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label.slice(0, 18), size / 2, size / 2);
 }
 
-function appendWorldContents(li: HTMLLIElement, world: JsonObject): void {
-  if (String(world.id) !== selectedWorldId) return;
-  const worldId = String(world.id);
-  const expanded = document.createElement("div");
-  expanded.className = "world-expanded";
-  const assignments = worldAssignments(worldId);
-  const entities = worldEntities(worldId);
-
-  type WorldRow = { id: string; label: string; kind: "robot" | "camera" | "rigid_body"; source: JsonObject };
-  const robotRows: WorldRow[] = assignments.map((item) => ({
-    id: String(item.robot_id),
-    label: `${String((item.metadata as JsonObject | undefined)?.label ?? item.robot_id)} · ${String(item.robot_kind)}`,
-    kind: "robot",
-    source: item
-  }));
-  const sections: Array<{ label: string; rows: WorldRow[]; action?: { label: string; run: () => void } }> = [
-    {
-      label: "arms",
-      rows: robotRows
-    }
-  ];
-  if (world.type === "virtual") {
-    sections.push({
-      label: "cameras",
-      rows: entities
-        .filter((entity) => entity.kind === "camera")
-        .map((entity) => ({ id: String(entity.id), label: String(entity.name ?? entity.id), kind: "camera", source: entity })),
-      action: { label: "Add camera", run: () => void createVirtualCameraInWorld(worldId) }
+function drawWorldPreviewCanvas(canvas: HTMLCanvasElement, world: JsonObject): void {
+  const size = 320;
+  if (canvas.width !== size || canvas.height !== size) {
+    canvas.width = size;
+    canvas.height = size;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const worldId = String(world.id ?? "");
+  const isVirtual = world.type === "virtual";
+  const virtualCameras = worldEntities(worldId).filter((entity) => entity.kind === "camera");
+  const physicalVideos = camVideos
+    .map((video, index) => ({ video, index }))
+    .filter((item) =>
+      item.video &&
+      activeBrowserCameraIds.has(item.index) &&
+      item.video.readyState >= 2 &&
+      physicalCameraWorldId(item.index) === worldId
+    );
+  const tiles = isVirtual ? virtualCameras : physicalVideos;
+  ctx.clearRect(0, 0, size, size);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, size, size);
+  if (tiles.length === 0) {
+    const hue = Array.from(worldId).reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+    drawFallbackPlanet(ctx, size, isVirtual ? "no virtual cameras" : "no camera feed", hue);
+  } else {
+    const cols = Math.ceil(Math.sqrt(tiles.length));
+    const rows = Math.ceil(tiles.length / cols);
+    const tileW = size / cols;
+    const tileH = size / rows;
+    tiles.forEach((tile, index) => {
+      const x = (index % cols) * tileW;
+      const y = Math.floor(index / cols) * tileH;
+      if (isVirtual) {
+        const entity = tile as JsonObject;
+        const hue = Array.from(String(entity.id ?? index)).reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+        const gradient = ctx.createLinearGradient(x, y, x + tileW, y + tileH);
+        gradient.addColorStop(0, `hsl(${hue}, 62%, 44%)`);
+        gradient.addColorStop(1, `hsl(${(hue + 92) % 360}, 54%, 18%)`);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, y, tileW, tileH);
+        ctx.fillStyle = "rgba(255,255,255,0.76)";
+        ctx.font = "500 10px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(entity.name ?? "camera").slice(0, 16), x + tileW / 2, y + tileH / 2);
+      } else {
+        const video = (tile as { video: HTMLVideoElement | null }).video;
+        if (video) ctx.drawImage(video, x, y, tileW, tileH);
+      }
     });
   }
-
-  for (const section of sections) {
-    const block = document.createElement("div");
-    block.className = "world-section";
-    const head = document.createElement("div");
-    head.className = "world-section-head";
-    const label = document.createElement("div");
-    label.className = "world-section-label";
-    label.textContent = section.label;
-    head.append(label);
-    if (section.action) {
-      const action = makeGhostIcon("plus", section.action.label);
-      action.addEventListener("click", (event) => {
-        event.stopPropagation();
-        section.action?.run();
-      });
-      head.append(action);
-    }
-    block.append(head);
-    if (section.rows.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "world-section-empty";
-      empty.textContent = "none";
-      block.append(empty);
-    } else {
-      for (const item of section.rows) {
-        block.append(renderWorldChildRow(item));
-      }
-    }
-    expanded.append(block);
-  }
-  li.append(expanded);
+  ctx.restore();
+  ctx.strokeStyle = worldId === selectedWorldId ? "#f5d76e" : "#2a2a2a";
+  ctx.lineWidth = worldId === selectedWorldId ? 5 : 2;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
-function renderWorldChildRow(item: { id: string; label: string; kind: "robot" | "camera" | "rigid_body"; source: JsonObject }): HTMLDivElement {
-  const row = document.createElement("div");
-  row.className = "world-section-row";
-  const label = document.createElement("span");
-  label.textContent = item.label;
-  row.append(label);
-  const actions = document.createElement("span");
-  actions.className = "row-icon-actions";
-  const config = makeGhostIcon("config", `Configure ${item.kind}`);
-  config.addEventListener("click", async (event) => {
-    event.stopPropagation();
-    const currentName = item.kind === "robot"
-      ? String(((item.source.metadata as JsonObject | undefined)?.label as string | undefined) ?? item.id)
-      : String(item.source.name ?? item.id);
-    const name = window.prompt("Name", currentName);
-    if (!name) return;
-    if (item.kind === "robot") {
-      const metadata = { ...((item.source.metadata as JsonObject | undefined) ?? {}), label: name };
-      const result = await window.chem0.callTool("assign_robot_to_world", {
-        robot_id: item.id,
-        world_id: String(item.source.world_id),
-        robot_kind: String(item.source.robot_kind),
-        port: typeof item.source.port === "string" ? item.source.port : null,
-        metadata
-      });
-      show(result);
-    } else {
-      show(await window.chem0.callTool("update_virtual_entity", { entity_id: item.id, name }));
-    }
-    await refreshWorlds();
-    void refreshRobots();
-  });
-  const remove = makeGhostIcon("x", `Remove ${item.kind}`);
-  remove.addEventListener("click", async (event) => {
-    event.stopPropagation();
-    if (!window.confirm(`Remove ${item.label}?`)) return;
-    if (item.kind === "robot") {
-      const entityId = (item.source.metadata as JsonObject | undefined)?.entity_id;
-      const result = typeof entityId === "string"
-        ? await window.chem0.callTool("delete_virtual_entity", { entity_id: entityId })
-        : await window.chem0.callTool("delete_robot_assignment", { robot_id: item.id });
-      show(result);
-    } else {
-      show(await window.chem0.callTool("delete_virtual_entity", { entity_id: item.id }));
-    }
-    await refreshWorlds();
-    void refreshRobots();
-  });
-  actions.append(config, remove);
-  row.append(actions);
-  return row;
+function updateWorldPreviewCanvases(): void {
+  for (const canvas of worldsList.querySelectorAll<HTMLCanvasElement>(".world-orb-canvas")) {
+    const worldId = canvas.dataset.worldId ?? "";
+    const world = worldsCache.find((item) => String(item.id) === worldId);
+    if (world) drawWorldPreviewCanvas(canvas, world);
+  }
 }
 
 function renderWorldsList(): void {
@@ -525,30 +609,44 @@ function renderWorldsList(): void {
     worldSelect.append(option);
 
     const li = document.createElement("li");
-    li.className = "list-item";
+    li.className = "world-card";
     li.dataset.worldId = id;
     if (id === selectedWorldId) li.classList.add("active");
-    const header = document.createElement("div");
-    header.className = "world-title-row";
+    const orb = document.createElement("button");
+    orb.type = "button";
+    orb.className = "world-orb";
+    orb.setAttribute("aria-label", `Select ${String(world.name ?? id)}`);
+    const canvas = document.createElement("canvas");
+    canvas.className = "world-orb-canvas";
+    canvas.dataset.worldId = id;
+    orb.append(canvas);
+    if (world.type === "virtual") {
+      const configText = document.createElement("span");
+      configText.className = "world-orb-config";
+      configText.textContent = "Configure";
+      configText.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        show(await window.chem0.openVirtualWorldWindow(id));
+      });
+      orb.append(configText);
+    }
+    orb.addEventListener("click", () => {
+      void selectWorld(id, { matchExperiment: true });
+    });
+
+    const labelRow = document.createElement("div");
+    labelRow.className = "world-label-row";
     const title = document.createElement("div");
-    title.className = "title";
+    title.className = "world-label-title";
     title.textContent = String(world.name ?? id);
     const titleActions = document.createElement("div");
     titleActions.className = "row-icon-actions";
     const edit = makeGhostIcon("edit", "Rename world");
     edit.addEventListener("click", (event) => {
       event.stopPropagation();
-      startWorldInlineEdit(header, title, world);
+      startWorldInlineEdit(labelRow, title, world);
     });
     titleActions.append(edit);
-    if (world.type === "virtual") {
-      const config = makeGhostIcon("config", "Open virtual world editor");
-      config.addEventListener("click", async (event) => {
-        event.stopPropagation();
-        show(await window.chem0.openVirtualWorldWindow(id));
-      });
-      titleActions.append(config);
-    }
     const del = makeGhostIcon("trash", "Delete world");
     del.disabled = id === "world_physical_default";
     del.addEventListener("click", async (event) => {
@@ -572,22 +670,24 @@ function renderWorldsList(): void {
       }
     });
     titleActions.append(del);
-    header.append(title, titleActions);
-    const sub = document.createElement("div");
-    sub.className = "sub";
+    labelRow.append(title, titleActions);
+    const meta = document.createElement("div");
+    meta.className = "world-label-meta";
     const defaultRobot = world.default_robot_id ? `default ${String(world.default_robot_id)}` : "no default arm";
-    sub.textContent = `${String(world.type ?? "world")} · ${defaultRobot}`;
-    li.append(header, sub);
-    appendWorldContents(li, world);
-    li.addEventListener("click", () => {
-      selectedWorldId = id;
-      syncSelectedWorldState();
-      renderWorldsList();
-      void refreshRobots();
+    const cameraCount = world.type === "virtual"
+      ? worldEntities(id).filter((entity) => entity.kind === "camera").length
+      : Array.from(activeBrowserCameraIds).filter((slot) => physicalCameraWorldId(slot) === id).length;
+    meta.textContent = `${String(world.type ?? "world")} · ${cameraCount} camera${cameraCount === 1 ? "" : "s"} · ${defaultRobot}`;
+    li.append(orb, labelRow, meta);
+    li.addEventListener("click", (event) => {
+      if ((event.target as HTMLElement | null)?.closest("button")) return;
+      void selectWorld(id, { matchExperiment: true });
     });
     worldsList.append(li);
   }
   syncSelectedWorldState();
+  renderPickerMenus();
+  updateWorldPreviewCanvases();
 }
 
 function startWorldInlineEdit(header: HTMLDivElement, title: HTMLDivElement, world: JsonObject): void {
@@ -653,6 +753,67 @@ experimentNotes.addEventListener("input", () => {
   localStorage.setItem(`chem0:notes:${experimentId}`, experimentNotes.value);
 });
 
+async function clearActiveExperiment(): Promise<void> {
+  experimentId = "";
+  sessionId = "";
+  experimentSelect.value = "";
+  setActiveExperimentLabel("No experiment", false);
+  updateExperimentsListSelection();
+  updateNotesPane();
+  await loadEvents();
+  void refreshArtifacts();
+  renderPickerMenus();
+}
+
+async function selectExperiment(id: string): Promise<void> {
+  const experiment = experimentsCache.find((item) => String(item.id) === id);
+  if (!experiment) {
+    await clearActiveExperiment();
+    return;
+  }
+  setActive(experiment);
+  await loadEvents();
+  void refreshArtifacts();
+  void refreshRobots();
+}
+
+async function selectWorld(id: string, options: { matchExperiment?: boolean } = {}): Promise<void> {
+  if (!worldsCache.some((world) => String(world.id) === id)) return;
+  selectedWorldId = id;
+  syncSelectedWorldState();
+  renderWorldsList();
+  if (options.matchExperiment && experimentId) {
+    const activeExperiment = experimentsCache.find((item) => String(item.id) === experimentId);
+    if (String(activeExperiment?.world_id ?? "") !== id) {
+      const nextExperiment = experimentsCache.find((item) => String(item.world_id ?? "") === id);
+      if (nextExperiment) await selectExperiment(String(nextExperiment.id));
+      else await clearActiveExperiment();
+    }
+  } else {
+    renderPickerMenus();
+  }
+  void refreshRobots();
+}
+
+async function createExperimentFromCurrentWorld(): Promise<void> {
+  try {
+    const result = await window.chem0.createExperiment(
+      experimentName.value.trim() || "Untitled experiment",
+      { app: "electron" },
+      selectedWorldId
+    );
+    show(result);
+    setActive(result.experiment as JsonObject, result.session as JsonObject);
+    await refreshExperiments();
+    await loadEvents();
+    void refreshArtifacts();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    show({ create_experiment_error: message });
+    appendChat("error", `create_experiment failed: ${message}`);
+  }
+}
+
 async function refreshExperiments(): Promise<void> {
   const result = await window.chem0.listExperiments();
   const experiments = (result.experiments ?? []) as JsonObject[];
@@ -667,6 +828,7 @@ async function refreshExperiments(): Promise<void> {
   if (!experimentId && experiments[0]) setActive(experiments[0]);
   if (experimentId) experimentSelect.value = experimentId;
   renderExperimentsList();
+  renderPickerMenus();
   updateNotesPane();
 }
 
@@ -899,11 +1061,92 @@ async function call(name: string, args: JsonObject = {}): Promise<JsonObject> {
 }
 
 function updateCameraVisibility(activeIds: Set<number>): void {
+  activeBrowserCameraIds = new Set(activeIds);
+  renderSelectedWorldCameras();
+  updateWorldPreviewCanvases();
+}
+
+function drawVirtualCameraPreview(canvas: HTMLCanvasElement, camera: JsonObject): void {
+  const width = 320;
+  const height = 180;
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const seed = String(camera.id ?? camera.name ?? "");
+  const hue = Array.from(seed).reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, `hsl(${hue}, 58%, 38%)`);
+  gradient.addColorStop(1, `hsl(${(hue + 96) % 360}, 46%, 14%)`);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < width; x += 32) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < height; y += 32) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(255,255,255,0.82)";
+  ctx.font = "500 13px Inter, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(camera.name ?? "Virtual camera"), width / 2, height / 2);
+}
+
+function renderSelectedWorldCameras(): void {
+  const world = selectedWorld();
+  const showPhysicalCameras = world?.type === "physical";
   for (let i = 0; i < camVideos.length; i++) {
     const cell = camVideos[i]?.closest(".camera-cell") as HTMLElement | null;
     if (!cell) continue;
-    cell.classList.toggle("hidden", !activeIds.has(i));
+    const assignedHere = showPhysicalCameras && activeBrowserCameraIds.has(i) && physicalCameraWorldId(i) === selectedWorldId;
+    cell.classList.toggle("hidden", !assignedHere);
   }
+  const selectedVirtualCameras = world?.type === "virtual"
+    ? worldEntities(selectedWorldId).filter((entity) => entity.kind === "camera")
+    : [];
+  const visibleIds = new Set(selectedVirtualCameras.map((camera) => String(camera.id)));
+  for (const [id, cell] of virtualCameraCells) {
+    if (visibleIds.has(id)) continue;
+    cell.remove();
+    virtualCameraCells.delete(id);
+  }
+  for (const camera of selectedVirtualCameras) {
+    const id = String(camera.id);
+    let cell = virtualCameraCells.get(id);
+    if (!cell) {
+      cell = document.createElement("div");
+      cell.className = "camera-cell virtual-camera-cell";
+      cell.dataset.cameraId = id;
+      cell.dataset.cameraKind = "virtual";
+      const frame = document.createElement("div");
+      frame.className = "camera-frame";
+      const canvas = document.createElement("canvas");
+      canvas.className = "virtual-camera-preview";
+      frame.append(canvas);
+      const label = document.createElement("div");
+      label.className = "camera-label";
+      cell.append(frame, label);
+      camerasStrip.append(cell);
+      virtualCameraCells.set(id, cell);
+    }
+    assignCameraToWorld({ cameraId: id, cameraKind: "virtual", worldId: selectedWorldId });
+    const label = cell.querySelector<HTMLElement>(".camera-label");
+    const canvas = cell.querySelector<HTMLCanvasElement>("canvas");
+    if (label) label.textContent = String(camera.name ?? id);
+    if (canvas) drawVirtualCameraPreview(canvas, camera);
+  }
+  updateWorldPreviewCanvases();
 }
 
 function setCameraLabel(slot: number, label: string): void {
@@ -1032,35 +1275,29 @@ async function boot(): Promise<void> {
   void refreshRobots();
   void initBrowserCameras();
   setInterval(() => void refreshRobots(), 8000);
+  setInterval(updateWorldPreviewCanvases, 5000);
 }
 
-document.querySelector("#create-experiment")?.addEventListener("click", async () => {
-  try {
-    const result = await window.chem0.createExperiment(
-      experimentName.value.trim() || "Untitled experiment",
-      { app: "electron" },
-      selectedWorldId
-    );
-    show(result);
-    setActive(result.experiment as JsonObject, result.session as JsonObject);
-    await refreshExperiments();
-    await loadEvents();
-    void refreshArtifacts();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    show({ create_experiment_error: message });
-    appendChat("error", `create_experiment failed: ${message}`);
-  }
-});
+document.querySelector("#create-experiment")?.addEventListener("click", () => void createExperimentFromCurrentWorld());
 
-worldSelect.addEventListener("change", () => {
-  selectedWorldId = worldSelect.value;
-  syncSelectedWorldState();
-  void refreshRobots();
-});
+worldSelect.addEventListener("change", () => void selectWorld(worldSelect.value, { matchExperiment: true }));
 refreshWorldsBtn.addEventListener("click", async () => {
   await refreshWorlds();
   void refreshRobots();
+});
+
+experimentPickerButton.addEventListener("click", () => {
+  const nextHidden = !experimentPickerMenu.hidden ? true : false;
+  closeAppbarMenus();
+  experimentPickerMenu.hidden = nextHidden;
+  experimentPickerButton.setAttribute("aria-expanded", String(!nextHidden));
+});
+
+worldPickerButton.addEventListener("click", () => {
+  const nextHidden = !worldPickerMenu.hidden ? true : false;
+  closeAppbarMenus();
+  worldPickerMenu.hidden = nextHidden;
+  worldPickerButton.setAttribute("aria-expanded", String(!nextHidden));
 });
 
 newWorldMenuBtn.addEventListener("click", () => {
@@ -1075,6 +1312,15 @@ for (const btn of newWorldOptions.querySelectorAll<HTMLButtonElement>("button[da
 }
 document.addEventListener("click", (event) => {
   const target = event.target as Node | null;
+  if (
+    target &&
+    !experimentPickerMenu.contains(target) &&
+    !experimentPickerButton.contains(target) &&
+    !worldPickerMenu.contains(target) &&
+    !worldPickerButton.contains(target)
+  ) {
+    closeAppbarMenus();
+  }
   if (!target || newWorldOptions.hidden) return;
   if (newWorldOptions.contains(target) || newWorldMenuBtn.contains(target)) return;
   newWorldOptions.hidden = true;
@@ -1090,18 +1336,7 @@ document.addEventListener("keydown", (event) => {
 
 createVirtualArmBtn.addEventListener("click", () => void createVirtualArm());
 
-experimentSelect.addEventListener("change", async () => {
-  experimentId = experimentSelect.value;
-  sessionId = "";
-  const experiment = experimentsCache.find((item) => String(item.id) === experimentId);
-  if (experiment) selectedWorldId = String(experiment.world_id ?? selectedWorldId);
-  syncSelectedWorldState();
-  setActiveExperimentLabel(experimentId || "No experiment", Boolean(experimentId));
-  updateExperimentsListSelection();
-  updateNotesPane();
-  await loadEvents();
-  void refreshArtifacts();
-});
+experimentSelect.addEventListener("change", () => void selectExperiment(experimentSelect.value));
 
 refreshRobotsBtn.addEventListener("click", () => void refreshRobots());
 refreshArtifactsBtn.addEventListener("click", () => void refreshArtifacts());

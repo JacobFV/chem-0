@@ -199,3 +199,18 @@ If no servos respond, do not move. Check:
 - serial port already in use.
 
 Then run `probe_feetech` again.
+
+
+## Chemist-0 context. 
+This should always be in context in any skill being run.
+The agent is a chemist performing a titration experiment as described in [experiment.md](experiment.md) file.
+
+The human inputs an experimental objective through the electron app. It reasons about what each reagent is, and uses Bayesian optimization to find the recipe that minimizes solution resistance while keeping pH in a target window, either yellow, green or blue via bromothymol blue. Mid-run, the agent commits to a hypothesis about reagent identities; the human operator reveals the truth; the agent updates and continues.
+
+The agent has these actions:
+- Pick up vial
+- Infer vial pH from colour
+- Infer vial identity among: vinegar, NaCl solution, baking soda, borax
+- Combine vial A and vial B in new vial
+- Pick up multimeter probe
+- Dip multimeter probe into solution and read resistance

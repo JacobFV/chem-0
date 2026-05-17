@@ -1,7 +1,7 @@
 # Experiment: Mixture optimization with unknown reagents
 
 ## Goal
-A robot arm runs trials mixing three unknown reagents (A, B, C) in water. An LLM agent reasons about what each reagent is, and uses Bayesian optimization to find the recipe that minimizes solution resistance while keeping pH in a target window. Mid-run, the agent commits to a hypothesis about reagent identities; the operator reveals the truth; the agent updates and continues.
+A robot arm runs trials mixing three unknown reagents (A, B, C) in water. An LLM agent reasons about what each reagent is, and uses Bayesian optimization to find the recipe that minimizes solution resistance while keeping pH in a target window, either yellow, green or blue via bromothymol blue. Mid-run, the agent commits to a hypothesis about reagent identities; the operator reveals the truth; the agent updates and continues.
 
 ## Ground truth (hidden from agent until reveal)
 - A: white vinegar (5% acetic acid)

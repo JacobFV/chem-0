@@ -43,6 +43,7 @@ let selectedId = "";
 
 type VirtualWorldEditorApi = {
   createEntity: (kind: string, pose?: JsonObject) => Promise<void>;
+  getState: () => { world: JsonObject | null; entities: JsonObject[]; selectedId: string };
   refresh: () => Promise<void>;
   selectEntity: (id: string) => void;
   updateEntityPose: (id: string, pose: JsonObject) => Promise<void>;
@@ -313,6 +314,7 @@ deleteObjectBtn.addEventListener("click", async () => {
 
 const editorApi: VirtualWorldEditorApi = {
   createEntity,
+  getState: () => ({ world, entities, selectedId }),
   refresh,
   selectEntity: (id: string) => {
     selectedId = id;

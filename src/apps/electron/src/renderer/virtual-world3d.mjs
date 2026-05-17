@@ -367,4 +367,5 @@ function animate() {
 
 window.addEventListener("vw:state", (event) => rebuild(event.detail || {}));
 window.addEventListener("resize", resize);
+rebuild(editorApi()?.getState?.() || {});
 animate();

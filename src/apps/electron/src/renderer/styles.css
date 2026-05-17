@@ -1193,19 +1193,16 @@ body.platform-linux .appbar { padding-left: 0; padding-right: 140px; }
 }
 
 .appbar-submenu-popup {
-  position: absolute;
-  left: calc(100% + 4px);
-  top: -1px;
-  min-width: 260px;
+  position: fixed;
+  width: 260px;
   border: 1px solid var(--border-2);
   background: var(--bg-0);
   box-shadow: var(--shadow-menu);
   display: none;
-  z-index: 90;
+  z-index: 200;
 }
 
-.appbar-submenu:hover > .appbar-submenu-popup,
-.appbar-submenu:focus-within > .appbar-submenu-popup {
+.appbar-submenu-popup.open {
   display: block;
 }
 

@@ -333,6 +333,7 @@ function closeAppbarMenus(): void {
   worldPickerMenu.hidden = true;
   experimentPickerButton.setAttribute("aria-expanded", "false");
   worldPickerButton.setAttribute("aria-expanded", "false");
+  for (const p of document.querySelectorAll<HTMLElement>(".appbar-submenu-popup.open")) p.classList.remove("open");
 }
 
 function menuButton(label: string, sub: string, active: boolean, onClick: () => void): HTMLButtonElement {
@@ -374,6 +375,7 @@ function renderPickerMenus(): void {
   experimentPickerMenu.append(menuButton("+ New Experiment", "create in current world", false, () => void createExperimentFromCurrentWorld()));
 
   worldPickerMenu.replaceChildren();
+  for (const p of document.querySelectorAll(".appbar-submenu-popup.detached")) p.remove();
   for (const world of worldsCache) {
     const id = String(world.id ?? "");
     const experimentCount = experimentsCache.filter((experiment) => String(experiment.world_id ?? "") === id).length;
@@ -410,8 +412,33 @@ function renderPickerMenus(): void {
     menuButton("Virtual: Titration station", "ring stand · burette · flask · pH meter", false, () => openWorldModal("create", "virtual", undefined, "titration")),
     menuButton("Virtual: Weighing station", "balance · reagent · weigh boat · spatula", false, () => openWorldModal("create", "virtual", undefined, "weighing"))
   );
-  newWorld.append(label, popup);
+  newWorld.append(label);
   worldPickerMenu.append(newWorld);
+  popup.classList.add("detached");
+  document.body.append(popup);
+  const positionPopup = (): void => {
+    const rect = label.getBoundingClientRect();
+    const popupWidth = 260;
+    const gap = 4;
+    let left = rect.right + gap;
+    if (left + popupWidth > window.innerWidth - 8) left = Math.max(8, rect.left - popupWidth - gap);
+    popup.style.left = `${left}px`;
+    popup.style.top = `${rect.top}px`;
+  };
+  const openSubmenu = (): void => {
+    positionPopup();
+    popup.classList.add("open");
+  };
+  const closeSubmenu = (): void => popup.classList.remove("open");
+  newWorld.addEventListener("mouseenter", openSubmenu);
+  newWorld.addEventListener("mouseleave", (e) => {
+    if (!popup.contains(e.relatedTarget as Node | null)) closeSubmenu();
+  });
+  newWorld.addEventListener("click", openSubmenu);
+  popup.addEventListener("mouseleave", (e) => {
+    if (!newWorld.contains(e.relatedTarget as Node | null)) closeSubmenu();
+  });
+  worldPickerMenu.addEventListener("scroll", () => { if (popup.classList.contains("open")) positionPopup(); });
   setActiveWorldLabel();
 }
 
@@ -1090,47 +1117,118 @@ type TemplateEntity =
   | { tool: "light"; name: string; pose: JsonObject; spec?: JsonObject }
   | { tool: "rigid"; name: string; pose: JsonObject; spec: JsonObject };
 
+// SO-101 sits at world origin (+X = forward in front of the arm, +Z = up).
+// Reach is ~0.35 m; workspace is roughly x∈[-0.1, 0.45], y∈[-0.3, 0.3], z∈[0, 0.45].
+// Bench-top items live just above z=0 (the bench top is z∈[-0.02, 0]).
+const WORKSPACE_TARGET = { x: 0.22, y: 0, z: 0.12 };
+
+// Camera convention: at yaw=0, pitch=0, roll=0 the camera looks down -Y.
+// Rotations are applied as Three.js XYZ Euler (intrinsic Rx then Ry then Rz),
+// so for a camera with pitch=0 the forward direction reduces to
+// [sin(yaw)·cos(roll), -cos(yaw)·cos(roll), -sin(roll)].
+// Given a desired look-at target we can solve: yaw = atan2(dx, -dy), roll = -asin(dz).
+function cameraPoseLookingAt(pos: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): JsonObject {
+  const dx = target.x - pos.x;
+  const dy = target.y - pos.y;
+  const dz = target.z - pos.z;
+  const len = Math.hypot(dx, dy, dz) || 1;
+  const nz = dz / len;
+  const yawDeg = Math.atan2(dx / len, -(dy / len)) * (180 / Math.PI);
+  const rollDeg = -Math.asin(Math.max(-1, Math.min(1, nz))) * (180 / Math.PI);
+  const round = (v: number): number => Math.round(v * 10) / 10;
+  return { x: pos.x, y: pos.y, z: pos.z, roll: round(rollDeg), pitch: 0, yaw: round(yawDeg) };
+}
+
 function templateEntities(template: VirtualTemplate): TemplateEntity[] {
   if (template === "empty") return [];
+  // Bench under the arm so glassware has a surface to sit on (z=0 top, ~2cm thick).
+  const bench: TemplateEntity = {
+    tool: "rigid",
+    name: "Bench",
+    pose: { x: 0.18, y: 0, z: -0.011 },
+    spec: { mass_kg: 0, collision_shape: "box", dimensions_m: [0.7, 0.55, 0.02], asset: "bench" }
+  };
+  // Two cameras pulled back far enough (~0.85m) to frame the full reach envelope.
+  const frontCam: TemplateEntity = {
+    tool: "camera",
+    name: "Front camera",
+    pose: cameraPoseLookingAt({ x: 0.22, y: -0.85, z: 0.45 }, WORKSPACE_TARGET),
+    spec: { resolution: "1280x720", fov_degrees: 55 }
+  };
+  const sideCam: TemplateEntity = {
+    tool: "camera",
+    name: "Side camera",
+    pose: cameraPoseLookingAt({ x: 0.85, y: -0.35, z: 0.4 }, WORKSPACE_TARGET),
+    spec: { resolution: "1280x720", fov_degrees: 55 }
+  };
   const base: TemplateEntity[] = [
     { tool: "arm", name: "SO-101 arm", pose: { x: 0, y: 0, z: 0 }, make_default: true },
-    { tool: "light", name: "Key light", pose: { x: 0.1, y: -0.3, z: 0.7 }, spec: { type: "area", intensity: 1.2, color: "#ffffff" } },
-    { tool: "camera", name: "Bench camera", pose: { x: 0.25, y: -0.25, z: 0.42, yaw: -45 }, spec: { resolution: "1280x720", fov_degrees: 60 } }
+    { tool: "light", name: "Key light", pose: { x: 0.2, y: -0.5, z: 1.1 }, spec: { type: "area", intensity: 1.3, color: "#ffffff" } },
+    { tool: "light", name: "Fill light", pose: { x: -0.4, y: 0.4, z: 0.9 }, spec: { type: "area", intensity: 0.7, color: "#f4f7ff" } },
+    bench,
+    frontCam,
+    sideCam
   ];
   if (template === "bench") {
     return [
       ...base,
-      { tool: "rigid", name: "Bench", pose: { x: 0.2, y: 0, z: 0.01 }, spec: { mass_kg: 0, collision_shape: "box", dimensions_m: [0.6, 0.4, 0.02], asset: "bench" } },
-      { tool: "rigid", name: "Tray", pose: { x: 0.22, y: 0, z: 0.035 }, spec: { mass_kg: 0.35, collision_shape: "box", dimensions_m: [0.3, 0.2, 0.025], asset: "tray" } }
+      { tool: "rigid", name: "Work tray", pose: { x: 0.28, y: 0, z: 0.013 }, spec: { mass_kg: 0.35, collision_shape: "box", dimensions_m: [0.3, 0.22, 0.025], asset: "tray" } },
+      { tool: "rigid", name: "Sample box", pose: { x: 0.18, y: 0.22, z: 0.025 }, spec: { mass_kg: 0.1, collision_shape: "box", dimensions_m: [0.06, 0.06, 0.05], asset: "box" } },
+      { tool: "rigid", name: "Cylinder marker", pose: { x: 0.18, y: -0.22, z: 0.025 }, spec: { mass_kg: 0.05, collision_shape: "cylinder", radius_m: 0.025, height_m: 0.05, asset: "cylinder" } }
     ];
   }
   if (template === "glassware") {
+    // Rack sits flat on the bench (height 0.035 → center z=0.0175). Vials sit in rack holes,
+    // tops aligned slightly above rack top, so cylinder center z = rack_top + h/2.
+    const rackTop = 0.035;
     return [
       ...base,
-      { tool: "rigid", name: "Vial rack", pose: { x: 0.2, y: 0.05, z: 0.02 }, spec: { mass_kg: 0.2, collision_shape: "box", dimensions_m: [0.12, 0.09, 0.035], asset: "vial_rack" } },
-      { tool: "rigid", name: "Vial 4mL #1", pose: { x: 0.17, y: 0.05, z: 0.04 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
-      { tool: "rigid", name: "Vial 4mL #2", pose: { x: 0.2, y: 0.05, z: 0.04 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
-      { tool: "rigid", name: "Vial 4mL #3", pose: { x: 0.23, y: 0.05, z: 0.04 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
-      { tool: "rigid", name: "Beaker 50mL", pose: { x: 0.18, y: -0.08, z: 0.027 }, spec: { mass_kg: 0.04, collision_shape: "cylinder", radius_m: 0.021, height_m: 0.055, asset: "beaker_50" } },
-      { tool: "rigid", name: "Pipette", pose: { x: 0.28, y: 0.0, z: 0.11 }, spec: { mass_kg: 0.02, collision_shape: "cylinder", radius_m: 0.005, height_m: 0.22, asset: "pipette" } }
+      { tool: "rigid", name: "Vial rack 4×3", pose: { x: 0.25, y: 0.08, z: 0.0175 }, spec: { mass_kg: 0.2, collision_shape: "box", dimensions_m: [0.12, 0.09, 0.035], asset: "vial_rack" } },
+      { tool: "rigid", name: "Vial 4mL #1", pose: { x: 0.22, y: 0.08, z: rackTop + 0.025 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
+      { tool: "rigid", name: "Vial 4mL #2", pose: { x: 0.25, y: 0.08, z: rackTop + 0.025 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
+      { tool: "rigid", name: "Vial 4mL #3", pose: { x: 0.28, y: 0.08, z: rackTop + 0.025 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
+      { tool: "rigid", name: "Beaker 50mL", pose: { x: 0.18, y: -0.12, z: 0.0275 }, spec: { mass_kg: 0.04, collision_shape: "cylinder", radius_m: 0.021, height_m: 0.055, asset: "beaker_50" } },
+      { tool: "rigid", name: "Beaker 250mL", pose: { x: 0.28, y: -0.14, z: 0.0425 }, spec: { mass_kg: 0.11, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.085, asset: "beaker_250" } },
+      { tool: "rigid", name: "Graduated cylinder", pose: { x: 0.36, y: 0.05, z: 0.1075 }, spec: { mass_kg: 0.09, collision_shape: "cylinder", radius_m: 0.014, height_m: 0.215, asset: "graduated_cyl_100" } },
+      { tool: "rigid", name: "Pipette", pose: { x: 0.12, y: 0.18, z: 0.0025 }, spec: { mass_kg: 0.02, collision_shape: "cylinder", radius_m: 0.005, height_m: 0.22, asset: "pipette" }, /* lays flat */ },
+      { tool: "rigid", name: "Petri dish", pose: { x: 0.34, y: -0.05, z: 0.0075 }, spec: { mass_kg: 0.03, collision_shape: "cylinder", radius_m: 0.045, height_m: 0.015, asset: "petri" } }
     ];
   }
   if (template === "titration") {
+    // Ring stand base on bench top. Box dims = 0.16×0.1×0.6, centered at z=0.30 so base is at z=0.
+    // Stand is offset to the back-left so the burette hangs over the workspace center.
+    const standX = 0.32;
+    const standY = 0.18;
     return [
       ...base,
-      { tool: "rigid", name: "Ring stand", pose: { x: 0.25, y: 0.12, z: 0.3 }, spec: { mass_kg: 1.2, collision_shape: "box", dimensions_m: [0.16, 0.1, 0.6], asset: "ring_stand" } },
-      { tool: "rigid", name: "Burette 50mL", pose: { x: 0.2, y: 0.1, z: 0.32 }, spec: { mass_kg: 0.18, collision_shape: "cylinder", radius_m: 0.012, height_m: 0.55, asset: "burette" } },
-      { tool: "rigid", name: "Erlenmeyer 250mL", pose: { x: 0.2, y: 0.1, z: 0.065 }, spec: { mass_kg: 0.13, collision_shape: "cylinder", radius_m: 0.04, height_m: 0.13, asset: "erlenmeyer_250" } },
-      { tool: "rigid", name: "Reagent bottle", pose: { x: 0.1, y: -0.1, z: 0.065 }, spec: { mass_kg: 0.25, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.13, asset: "reagent_bottle" } },
-      { tool: "rigid", name: "pH meter", pose: { x: 0.08, y: 0.15, z: 0.03 }, spec: { mass_kg: 0.6, collision_shape: "box", dimensions_m: [0.12, 0.18, 0.06], asset: "ph_meter" } }
+      { tool: "rigid", name: "Ring stand", pose: { x: standX, y: standY, z: 0.30 }, spec: { mass_kg: 1.2, collision_shape: "box", dimensions_m: [0.16, 0.1, 0.6], asset: "ring_stand" } },
+      // Burette clamped to the stand, tip hanging over the flask. 0.55m tall, centered at z=0.35 → top 0.625, tip 0.075.
+      { tool: "rigid", name: "Burette 50mL", pose: { x: standX - 0.10, y: standY, z: 0.35 }, spec: { mass_kg: 0.18, collision_shape: "cylinder", radius_m: 0.012, height_m: 0.55, asset: "burette" } },
+      // Erlenmeyer flask directly under the burette tip on the bench.
+      { tool: "rigid", name: "Erlenmeyer 250mL", pose: { x: standX - 0.10, y: standY, z: 0.065 }, spec: { mass_kg: 0.13, collision_shape: "cylinder", radius_m: 0.04, height_m: 0.13, asset: "erlenmeyer_250" } },
+      { tool: "rigid", name: "Stir bar", pose: { x: standX - 0.10, y: standY, z: 0.0035 }, spec: { mass_kg: 0.005, collision_shape: "cylinder", radius_m: 0.003, height_m: 0.025, asset: "stir_bar" } },
+      // Reagent bottle within arm reach on the front-right of the bench.
+      { tool: "rigid", name: "Titrant bottle", pose: { x: 0.18, y: -0.18, z: 0.065 }, spec: { mass_kg: 0.25, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.13, asset: "reagent_bottle" } },
+      // pH meter to the front-left, electrode area clear for the arm.
+      { tool: "rigid", name: "pH meter", pose: { x: 0.10, y: 0.22, z: 0.03 }, spec: { mass_kg: 0.6, collision_shape: "box", dimensions_m: [0.12, 0.18, 0.06], asset: "ph_meter" } },
+      // Spare flask to the front-right.
+      { tool: "rigid", name: "Beaker 250mL (waste)", pose: { x: 0.28, y: -0.20, z: 0.0425 }, spec: { mass_kg: 0.11, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.085, asset: "beaker_250" } }
     ];
   }
+  // Weighing station: balance front-and-center within reach, weigh boat on its pan,
+  // reagent bottle + spatula on one side, sample vials on the other.
+  const balanceX = 0.30;
+  const balanceY = 0.05;
+  const balanceTop = 0.12;
   return [
     ...base,
-    { tool: "rigid", name: "Analytical balance", pose: { x: 0.22, y: 0.05, z: 0.06 }, spec: { mass_kg: 5, collision_shape: "box", dimensions_m: [0.22, 0.32, 0.12], asset: "balance" } },
-    { tool: "rigid", name: "Reagent bottle", pose: { x: 0.1, y: -0.08, z: 0.065 }, spec: { mass_kg: 0.25, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.13, asset: "reagent_bottle" } },
-    { tool: "rigid", name: "Weigh boat", pose: { x: 0.22, y: 0.05, z: 0.13 }, spec: { mass_kg: 0.005, collision_shape: "box", dimensions_m: [0.05, 0.05, 0.005], asset: "weigh_boat" } },
-    { tool: "rigid", name: "Spatula", pose: { x: 0.15, y: 0.05, z: 0.03 }, spec: { mass_kg: 0.01, collision_shape: "box", dimensions_m: [0.12, 0.01, 0.005], asset: "spatula" } }
+    { tool: "rigid", name: "Analytical balance", pose: { x: balanceX, y: balanceY, z: 0.06 }, spec: { mass_kg: 5, collision_shape: "box", dimensions_m: [0.22, 0.32, 0.12], asset: "balance" } },
+    { tool: "rigid", name: "Weigh boat", pose: { x: balanceX, y: balanceY, z: balanceTop + 0.0025 }, spec: { mass_kg: 0.005, collision_shape: "box", dimensions_m: [0.05, 0.05, 0.005], asset: "weigh_boat" } },
+    { tool: "rigid", name: "Reagent bottle", pose: { x: 0.12, y: -0.20, z: 0.065 }, spec: { mass_kg: 0.25, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.13, asset: "reagent_bottle" } },
+    { tool: "rigid", name: "Spatula", pose: { x: 0.12, y: -0.08, z: 0.0025 }, spec: { mass_kg: 0.01, collision_shape: "box", dimensions_m: [0.12, 0.01, 0.005], asset: "spatula" } },
+    { tool: "rigid", name: "Sample vial #1", pose: { x: 0.15, y: 0.22, z: 0.025 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
+    { tool: "rigid", name: "Sample vial #2", pose: { x: 0.20, y: 0.22, z: 0.025 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
+    { tool: "rigid", name: "Tare pad", pose: { x: 0.10, y: 0.05, z: 0.0025 }, spec: { mass_kg: 0.02, collision_shape: "box", dimensions_m: [0.08, 0.08, 0.005], asset: "plate" } }
   ];
 }
 

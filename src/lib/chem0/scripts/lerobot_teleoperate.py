@@ -30,6 +30,30 @@ python -m lerobot.scripts.lerobot_teleoperate \
     --teleop.id=blue \
     --display_data=true
 ```
+
+
+LEADER_PORT=/dev/cu.usbmodem5A7A0187661      
+  FOLLOWER_PORT=/dev/cu.usbmodem5A460833421  
+  USER=indiraschka                               
+- for TASK in swirl pick-and-pour discard; do
+  .venv/bin/python src/lib/chem0/scripts/lerobot_record.py \
+    --robot.type=so101_follower \
+    --robot.port=$FOLLOWER_PORT \
+    --robot.id=mcp_so101 \
+    --robot.cameras='{ top: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30} }' \
+    --teleop.type=so101_leader \
+    --teleop.port=$LEADER_PORT \
+    --teleop.id=mcp_so101_leader \
+    --dataset.repo_id= $USER/chem0-$ TASK \
+    --dataset.num_episodes=10 \
+    --dataset.single_task="$TASK" \
+    --dataset.episode_time_s=20 \
+    --dataset.reset_time_s=10 \
+    --dataset.streaming_encoding=true \
+    --dataset.push_to_hub=false \
+    --display_data=true
+
+
 """
 
 import logging
@@ -62,6 +86,7 @@ from lerobot.robots import (  # noqa: F401
     so_follower,
     unitree_g1 as unitree_g1_robot,
 )
+
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
     TeleoperatorConfig,
@@ -82,7 +107,17 @@ from lerobot.teleoperators import (  # noqa: F401
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.robot_utils import precise_sleep
 from lerobot.utils.utils import init_logging, move_cursor_up
-from lerobot.utils.visualization_utils import init_rerun, log_rerun_data, shutdown_rerun
+try:
+    from lerobot.utils.visualization_utils import init_rerun, log_rerun_data, shutdown_rerun
+except ImportError:
+    from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
+
+    def shutdown_rerun() -> None:
+        try:
+            import rerun as rr
+            rr.disconnect()
+        except Exception:
+            pass
 
 
 @dataclass

@@ -974,8 +974,8 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "capture_lerobot_frame",
-        "description": "Read follower observation (state + camera images) and leader positions, add frame to dataset buffer. Returns frame index and observation keys.",
+        "name": "get_session_status",
+        "description": "Poll the current recording session status: frame count, episode count, recording flag.",
         "inputSchema": {
             "type": "object",
             "properties": {"session_id": {"type": "string"}},
@@ -1644,7 +1644,7 @@ def disconnect(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# LeRobot recording session
+# LeRobot recording session (uses vendored scripts' record_loop + SO101Leader)
 # ---------------------------------------------------------------------------
 
 from uuid import uuid4 as _uuid4
@@ -1653,9 +1653,7 @@ _lerobot_sessions: dict[str, dict[str, Any]] = {}
 
 
 def _build_lerobot_cameras(cameras_raw: Any) -> dict[str, Any]:
-    """Parse camera config from tool args into LeRobot CameraConfig objects."""
     from lerobot.cameras.opencv import OpenCVCameraConfig
-
     if not cameras_raw:
         return {}
     if isinstance(cameras_raw, str):
@@ -1671,107 +1669,65 @@ def _build_lerobot_cameras(cameras_raw: Any) -> dict[str, Any]:
     return cam_configs
 
 
-def _connect_leader_bus(port: str, baud: int = 1000000) -> Any:
-    """Connect a raw FeetechMotorsBus with torque disabled for leader arm."""
-    from lerobot.motors.feetech import FeetechMotorsBus
-
-    bus = FeetechMotorsBus(port=port)
-    bus.connect(handshake=True)
-    bus.set_baudrate(baud)
-    bus.disable_torque(num_retry=3)
-    return bus
-
-
-def _connect_follower_with_cameras(
-    port: str, robot_id: str, camera_configs: dict[str, Any], fps: int = 30
-) -> RobotState:
-    """Connect follower SO101Follower with camera support."""
-    from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
-
-    config = SO101FollowerConfig(
-        port=port,
-        id=robot_id,
-        cameras=camera_configs if camera_configs else {},
-        max_relative_target=DEFAULT_MAX_DELTA,
-    )
-    robot = SO101Follower(config)
-    robot.connect(calibrate=False)
-    state = RobotState(robot_id=robot_id, robot=robot, port=port)
-    ROBOTS[robot_id] = state
-    return state
-
-
-def _create_lerobot_dataset(
-    repo_id: str,
-    fps: int,
+def _session_loop(
+    events: dict[str, Any],
     robot: Any,
-    root: str | None = None,
-) -> Any:
-    """Create a LeRobotDataset from robot features."""
-    from lerobot.datasets import LeRobotDataset
-    from lerobot.datasets.utils import create_initial_features
+    teleop: Any,
+    dataset: Any,
+    teleop_action_processor: Any,
+    robot_action_processor: Any,
+    robot_observation_processor: Any,
+    fps: int,
+    task: str,
+) -> None:
+    """Background thread: mirrors leader→follower, conditionally records frames to dataset.
 
-    obs_features = getattr(robot, "observation_features", None)
-    act_features = getattr(robot, "action_features", None)
+    Controlled via IPC-driven events dict:
+      - events[\"stop_recording\"]: set True to exit loop
+      - events[\"episode_active\"]: set True to start recording frames
+      - events[\"save_requested\"]: set True to save current episode
+    """
+    from lerobot.utils.robot_utils import precise_sleep
+    from lerobot.utils.feature_utils import build_dataset_frame
+    from lerobot.utils.constants import ACTION, OBS_STR
 
-    if obs_features is not None and act_features is not None:
-        features = create_initial_features(
-            action=act_features,
-            observation=obs_features,
-        )
-    else:
-        features = {}
-        for joint in JOINTS:
-            features[f"observation.{joint}.pos"] = {"dtype": "float32", "shape": (1,), "names": None}
-        features["action"] = {"dtype": "float32", "shape": (len(JOINTS),), "names": JOINTS}
-        if hasattr(robot, "cameras") and robot.cameras:
-            for cam_name in robot.cameras:
-                features[f"observation.images.{cam_name}"] = {"dtype": "image", "shape": (3, 480, 640)}
+    control_interval = 1.0 / fps
+    while not events["stop_recording"]:
+        loop_start = time.perf_counter()
 
-    num_cameras = len(robot.cameras) if hasattr(robot, "cameras") else 0
-    dataset = LeRobotDataset.create(
-        repo_id,
-        fps,
-        root=root,
-        robot_type=getattr(robot, "name", "so101_follower") or "so101_follower",
-        features=features,
-        use_videos=num_cameras > 0,
-        image_writer_processes=2 if num_cameras > 0 else 0,
-        image_writer_threads=num_cameras if num_cameras > 0 else 0,
-    )
-    return dataset
+        if events.get("save_requested"):
+            events["save_requested"] = False
+            try:
+                dataset.save_episode()
+                events["frame_count"] = 0
+                events["episode_just_saved"] = True
+            except Exception:
+                pass
+            events["episode_active"] = False
 
-
-def _mirror_loop(stop: threading.Event, leader_bus: Any, follower_state: RobotState) -> None:
-    """Background thread: read leader bus → send_action to follower at ~50 Hz."""
-    while not stop.is_set():
         try:
-            if follower_state.connected and leader_bus.is_connected:
-                positions = leader_bus.sync_read("Present_Position", normalize=False, num_retry=1)
-                if positions:
-                    action = {}
-                    for i, joint in enumerate(JOINTS):
-                        key = f"id{i + 1}"
-                        raw = positions.get(key, 2047)
-                        action[f"{joint}.pos"] = float(raw)
-                    if action:
-                        follower_state.robot.send_action(action)
+            obs = robot.get_observation()
+            raw_action = teleop.get_action()
+            teleop_action = teleop_action_processor((raw_action, obs))
+            robot_action = robot_action_processor((teleop_action, obs))
+            robot.send_action(robot_action)
         except Exception:
-            pass
-        stop.wait(0.02)
+            precise_sleep(control_interval)
+            continue
 
+        if events.get("episode_active") and dataset is not None:
+            try:
+                obs_processed = robot_observation_processor(obs)
+                obs_frame = build_dataset_frame(dataset.features, obs_processed, prefix=OBS_STR)
+                act_frame = build_dataset_frame(dataset.features, teleop_action, prefix=ACTION)
+                frame = {**obs_frame, **act_frame, "task": task}
+                dataset.add_frame(frame)
+                events["frame_count"] = events.get("frame_count", 0) + 1
+            except Exception:
+                pass
 
-def _read_leader_pose(leader_bus: Any) -> dict[str, float]:
-    """Read raw leader positions as normalized joint dict."""
-    if leader_bus is None or not leader_bus.is_connected:
-        return {}
-    try:
-        positions = leader_bus.sync_read("Present_Position", normalize=False, num_retry=2)
-        if positions:
-            return {joint: float(positions.get(f"id{i + 1}", 2047)) for i, joint in enumerate(JOINTS)}
-    except Exception:
-        pass
-    return {}
+        dt_s = time.perf_counter() - loop_start
+        precise_sleep(max(control_interval - dt_s, 0.0))
 
 
 def start_lerobot_session(args: dict[str, Any]) -> dict[str, Any]:
@@ -1782,52 +1738,104 @@ def start_lerobot_session(args: dict[str, Any]) -> dict[str, Any]:
     fps = int(args.get("fps", 30))
     push_to_hub = bool(args.get("push_to_hub", False))
     root = args.get("root")
-
     cameras_raw = args.get("cameras")
     camera_configs = _build_lerobot_cameras(cameras_raw) if cameras_raw else {}
 
     session_id = f"lr_{_uuid4().hex[:8]}"
-    session = {
-        "session_id": session_id,
-        "leader_port": leader_port,
-        "follower_port": follower_port,
-        "repo_id": repo_id,
-        "task": task,
-        "fps": fps,
-        "push_to_hub": push_to_hub,
-        "mirror_stop": threading.Event(),
-        "mirror_thread": None,
-        "leader_bus": None,
-        "dataset": None,
-    }
+
+    leader = None
+    follower = None
 
     try:
-        leader_bus = _connect_leader_bus(leader_port)
-        session["leader_bus"] = leader_bus
+        from lerobot.teleoperators.so_leader.config_so_leader import SOLeaderTeleopConfig
+        from lerobot.teleoperators.so_leader import SO101Leader
+
+        leader_config = SOLeaderTeleopConfig(port=leader_port, id="leader")
+        leader = SO101Leader(leader_config)
+        leader.connect()
+
+        from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 
         follower_id = f"follower_{Path(follower_port).stem}"
-        follower_state = _connect_follower_with_cameras(follower_port, follower_id, camera_configs, fps)
-        session["follower_robot_id"] = follower_id
+        follower_config = SO101FollowerConfig(
+            port=follower_port,
+            id=follower_id,
+            cameras=camera_configs,
+            max_relative_target=DEFAULT_MAX_DELTA,
+        )
+        follower = SO101Follower(follower_config)
+        follower.connect(calibrate=False)
 
-        dataset = _create_lerobot_dataset(repo_id, fps, follower_state.robot, root)
-        session["dataset"] = dataset
+        follower_state = RobotState(robot_id=follower_id, robot=follower, port=follower_port)
+        ROBOTS[follower_id] = follower_state
 
-        stop_flag = threading.Event()
+        from lerobot.processor import make_default_processors
+        from lerobot.datasets import LeRobotDataset
+        from lerobot.datasets.utils import (
+            aggregate_pipeline_dataset_features,
+            create_initial_features,
+        )
+        from lerobot.utils.feature_utils import combine_feature_dicts
+
+        teleop_ap, robot_ap, robot_op = make_default_processors()
+
+        dataset_features = combine_feature_dicts(
+            aggregate_pipeline_dataset_features(
+                pipeline=teleop_ap,
+                initial_features=create_initial_features(action=follower.action_features),
+                use_videos=bool(camera_configs),
+            ),
+            aggregate_pipeline_dataset_features(
+                pipeline=robot_op,
+                initial_features=create_initial_features(observation=follower.observation_features),
+                use_videos=bool(camera_configs),
+            ),
+        )
+
+        num_cameras = len(camera_configs)
+        dataset = LeRobotDataset.create(
+            repo_id,
+            fps,
+            root=root,
+            robot_type=follower.name,
+            features=dataset_features,
+            use_videos=num_cameras > 0,
+            image_writer_processes=2 if num_cameras > 0 else 0,
+            image_writer_threads=num_cameras if num_cameras > 0 else 0,
+        )
+
+        events: dict[str, Any] = {
+            "stop_recording": False,
+            "episode_active": False,
+            "save_requested": False,
+            "frame_count": 0,
+            "episode_just_saved": False,
+        }
+
         thread = threading.Thread(
-            target=_mirror_loop,
-            args=(stop_flag, leader_bus, follower_state),
+            target=_session_loop,
+            args=(events, follower, leader, dataset, teleop_ap, robot_ap, robot_op, fps, task),
             daemon=True,
         )
-        thread.stop_flag = stop_flag
         thread.start()
-        session["mirror_thread"] = thread
-        session["mirror_stop"] = stop_flag
 
-        cam_info = {}
-        if hasattr(follower_state.robot, "cameras"):
-            for name, cam in (follower_state.robot.cameras or {}).items():
+        cam_info: dict[str, str] = {}
+        if hasattr(follower, "cameras"):
+            for name, cam in (follower.cameras or {}).items():
                 cam_info[name] = str(type(cam).__name__)
 
+        session: dict[str, Any] = {
+            "session_id": session_id,
+            "leader": leader,
+            "follower_id": follower_id,
+            "dataset": dataset,
+            "events": events,
+            "thread": thread,
+            "task": task,
+            "fps": fps,
+            "push_to_hub": push_to_hub,
+            "episode_count": 0,
+        }
         _lerobot_sessions[session_id] = session
 
         return _tool_json({
@@ -1842,15 +1850,14 @@ def start_lerobot_session(args: dict[str, Any]) -> dict[str, Any]:
         })
 
     except Exception as exc:
-        if session["leader_bus"] and session["leader_bus"].is_connected:
+        if leader is not None and leader.is_connected:
             try:
-                session["leader_bus"].disconnect(disable_torque=False)
+                leader.disconnect()
             except Exception:
                 pass
-        follower_id = session.get("follower_robot_id")
-        if follower_id and follower_id in ROBOTS:
+        if follower is not None and follower.is_connected:
             try:
-                ROBOTS[follower_id].robot.disconnect()
+                follower.disconnect()
             except Exception:
                 pass
         return _tool_error(f"Failed to start session: {exc}")
@@ -1861,83 +1868,13 @@ def start_lerobot_episode(args: dict[str, Any]) -> dict[str, Any]:
     session = _lerobot_sessions.get(session_id)
     if not session:
         return _tool_error(f"Session not found: {session_id}")
-
-    dataset = session["dataset"]
     try:
-        dataset.clear_episode_buffer()
-        return _tool_json({"session_id": session_id, "episode_cleared": True})
+        session["dataset"].clear_episode_buffer()
+        session["events"]["episode_active"] = True
+        session["events"]["frame_count"] = 0
+        return _tool_json({"session_id": session_id, "episode_started": True})
     except Exception as exc:
         return _tool_error(f"Failed to start episode: {exc}")
-
-
-def capture_lerobot_frame(args: dict[str, Any]) -> dict[str, Any]:
-    session_id = args.get("session_id", "")
-    session = _lerobot_sessions.get(session_id)
-    if not session:
-        return _tool_error(f"Session not found: {session_id}")
-
-    dataset = session["dataset"]
-    leader_bus = session["leader_bus"]
-    follower_id = session.get("follower_robot_id")
-    task = session.get("task", "unknown")
-
-    follower_state = ROBOTS.get(follower_id)
-    if not follower_state or not follower_state.connected:
-        return _tool_error("Follower not connected.")
-
-    try:
-        obs = follower_state.robot.get_observation()
-    except Exception as exc:
-        return _tool_error(f"Failed to read follower observation: {exc}")
-
-    leader_pose = _read_leader_pose(leader_bus)
-
-    from lerobot.datasets import LeRobotDataset
-
-    if not hasattr(dataset, "features"):
-        return _tool_error("Dataset not initialized.")
-
-    frame = {"task": task}
-    features = dataset.features
-
-    for feat_name in features:
-        if feat_name.startswith("observation.images."):
-            cam_key = feat_name.split(".", 2)[2]
-            if cam_key in obs:
-                frame[feat_name] = obs[cam_key]
-        elif feat_name == "observation.state":
-            state = []
-            for joint in JOINTS:
-                val = obs.get(f"{joint}.pos", 0.0)
-                if hasattr(val, "item"):
-                    val = val.item()
-                state.append(float(val))
-            frame[feat_name] = state
-        elif feat_name.startswith("observation."):
-            rest = feat_name[len("observation."):]
-            if rest in obs:
-                frame[feat_name] = obs[rest]
-
-    if "action" in features:
-        leader_action = []
-        for joint in JOINTS:
-            val = leader_pose.get(joint, 0.0)
-            if hasattr(val, "item"):
-                val = val.item()
-            leader_action.append(float(val))
-        frame["action"] = leader_action
-
-    try:
-        dataset.add_frame(frame)
-    except Exception as exc:
-        return _tool_error(f"Failed to add frame: {exc}")
-
-    return _tool_json({
-        "session_id": session_id,
-        "frame_added": True,
-        "observation_keys": list(obs.keys()),
-        "leader_pose": leader_pose,
-    })
 
 
 def save_lerobot_episode(args: dict[str, Any]) -> dict[str, Any]:
@@ -1945,30 +1882,35 @@ def save_lerobot_episode(args: dict[str, Any]) -> dict[str, Any]:
     session = _lerobot_sessions.get(session_id)
     if not session:
         return _tool_error(f"Session not found: {session_id}")
-
-    dataset = session["dataset"]
     try:
-        dataset.save_episode()
-        num_episodes = dataset.num_episodes
-        return _tool_json({"session_id": session_id, "episode_saved": True, "num_episodes": num_episodes})
+        session["events"]["save_requested"] = True
+        timeout = 10.0
+        start_t = time.perf_counter()
+        while not session["events"].get("episode_just_saved") and not session["events"]["stop_recording"]:
+            if time.perf_counter() - start_t > timeout:
+                break
+            time.sleep(0.05)
+        just_saved = session["events"].pop("episode_just_saved", False)
+        session["episode_count"] += 1
+        return _tool_json({
+            "session_id": session_id,
+            "episode_saved": just_saved,
+            "num_episodes": session["episode_count"],
+            "frame_count": session["events"]["frame_count"],
+        })
     except Exception as exc:
         return _tool_error(f"Failed to save episode: {exc}")
 
 
 def stop_lerobot_session(args: dict[str, Any]) -> dict[str, Any]:
     session_id = args.get("session_id", "")
-    session = _lerobot_sessions.get(session_id)
+    session = _lerobot_sessions.pop(session_id, None)
     if not session:
         return _tool_error(f"Session not found: {session_id}")
 
-    result = {"session_id": session_id}
-
-    try:
-        session["mirror_stop"].set()
-        if session.get("mirror_thread"):
-            session["mirror_thread"].join(timeout=2)
-    except Exception as exc:
-        result["mirror_stop_error"] = str(exc)
+    result: dict[str, Any] = {"session_id": session_id}
+    session["events"]["stop_recording"] = True
+    session.get("thread", threading.Thread()).join(timeout=3)
 
     try:
         dataset = session.get("dataset")
@@ -1984,23 +1926,40 @@ def stop_lerobot_session(args: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         result["finalize_error"] = str(exc)
 
-    follower_id = session.get("follower_robot_id")
+    follower_id = session.get("follower_id")
     if follower_id and follower_id in ROBOTS:
         try:
             ROBOTS[follower_id].robot.disconnect()
+            del ROBOTS[follower_id]
         except Exception:
             pass
         result["follower_disconnected"] = True
 
     try:
-        if session.get("leader_bus") and session["leader_bus"].is_connected:
-            session["leader_bus"].disconnect(disable_torque=False)
+        leader = session.get("leader")
+        if leader is not None and leader.is_connected:
+            leader.disconnect()
             result["leader_disconnected"] = True
     except Exception:
         pass
 
-    _lerobot_sessions.pop(session_id, None)
     return _tool_json(result)
+
+
+def get_session_status(args: dict[str, Any]) -> dict[str, Any]:
+    session_id = args.get("session_id", "")
+    session = _lerobot_sessions.get(session_id)
+    if not session:
+        return _tool_error(f"Session not found: {session_id}")
+    ev = session["events"]
+    return _tool_json({
+        "session_id": session_id,
+        "recording": ev.get("episode_active", False),
+        "frame_count": ev.get("frame_count", 0),
+        "episode_count": session.get("episode_count", 0),
+        "fps": session.get("fps", 30),
+        "task": session.get("task", ""),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -2008,6 +1967,24 @@ def stop_lerobot_session(args: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _teleop_sessions: dict[str, dict[str, Any]] = {}
+
+
+def _teleop_loop(stop: threading.Event, robot: Any, teleop: Any, fps: int) -> None:
+    """Background thread: mirrors leader→follower via Teleoperator + Robot."""
+    from lerobot.processor import make_default_processors
+    from lerobot.utils.robot_utils import precise_sleep
+    teleop_ap, robot_ap, _ = make_default_processors()
+    control_interval = 1.0 / fps
+    while not stop.is_set():
+        try:
+            obs = robot.get_observation()
+            raw_action = teleop.get_action()
+            teleop_action = teleop_ap((raw_action, obs))
+            robot_action = robot_ap((teleop_action, obs))
+            robot.send_action(robot_action)
+        except Exception:
+            pass
+        stop.wait(max(control_interval - 0.002, 0.001))
 
 
 def start_lerobot_teleop(args: dict[str, Any]) -> dict[str, Any]:
@@ -2018,29 +1995,30 @@ def start_lerobot_teleop(args: dict[str, Any]) -> dict[str, Any]:
     session_id = f"tel_{_uuid4().hex[:8]}"
 
     try:
-        leader_bus = _connect_leader_bus(leader_port)
+        from lerobot.teleoperators.so_leader.config_so_leader import SOLeaderTeleopConfig
+        from lerobot.teleoperators.so_leader import SO101Leader
+
+        leader = SO101Leader(SOLeaderTeleopConfig(port=leader_port, id="leader"))
+        leader.connect()
+
         from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 
-        config = SO101FollowerConfig(port=follower_port, id=f"follower_{Path(follower_port).stem}", cameras={}, max_relative_target=DEFAULT_MAX_DELTA)
+        follower_id = f"follower_{Path(follower_port).stem}"
+        config = SO101FollowerConfig(port=follower_port, id=follower_id, cameras={}, max_relative_target=DEFAULT_MAX_DELTA)
         follower = SO101Follower(config)
         follower.connect(calibrate=False)
-        follower_state = RobotState(robot_id=f"follower_{Path(follower_port).stem}", robot=follower, port=follower_port)
-        ROBOTS[follower_state.robot_id] = follower_state
+        follower_state = RobotState(robot_id=follower_id, robot=follower, port=follower_port)
+        ROBOTS[follower_id] = follower_state
 
         stop_flag = threading.Event()
-        thread = threading.Thread(target=_mirror_loop, args=(stop_flag, leader_bus, follower_state), daemon=True)
+        thread = threading.Thread(target=_teleop_loop, args=(stop_flag, follower, leader, fps), daemon=True)
         thread.start()
 
-        session = {"leader_bus": leader_bus, "follower_robot_id": follower_state.robot_id, "stop_flag": stop_flag, "thread": thread}
+        session = {"leader": leader, "follower_id": follower_id, "stop_flag": stop_flag, "thread": thread}
         _teleop_sessions[session_id] = session
 
         return _tool_json({"session_id": session_id, "leader_port": leader_port, "follower_port": follower_port, "fps": fps})
     except Exception as exc:
-        if leader_bus and leader_bus.is_connected:
-            try:
-                leader_bus.disconnect(disable_torque=False)
-            except Exception:
-                pass
         return _tool_error(f"Failed to start teleop: {exc}")
 
 
@@ -2348,7 +2326,7 @@ HANDLERS = {
     "disconnect": disconnect,
     "start_lerobot_session": start_lerobot_session,
     "start_lerobot_episode": start_lerobot_episode,
-    "capture_lerobot_frame": capture_lerobot_frame,
+    "get_session_status": get_session_status,
     "save_lerobot_episode": save_lerobot_episode,
     "stop_lerobot_session": stop_lerobot_session,
     "start_lerobot_teleop": start_lerobot_teleop,

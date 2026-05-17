@@ -162,6 +162,7 @@ Virtual worlds also own virtual entities:
 
 - `arm`: a virtual robot arm, registered as a virtual robot assignment.
 - `camera`: a virtual camera pose and render spec.
+- `light`: a virtual light pose and illumination spec.
 - `rigid_body`: a collidable object with pose, mass, and collision geometry.
 
 Rigid bodies and virtual arms store `collision_enabled` plus collision specs

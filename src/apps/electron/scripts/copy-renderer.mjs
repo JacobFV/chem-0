@@ -11,7 +11,7 @@ for (const stale of ["calibration.js", "calibration.js.map", "record.html", "tra
   rmSync(join(out, stale), { force: true });
 }
 
-for (const file of ["index.html", "calibration.html", "workbench.html", "settings.html", "styles.css", "record-styles.css"]) {
+for (const file of ["index.html", "calibration.html", "workbench.html", "settings.html", "virtual-world.html", "styles.css", "record-styles.css", "virtual-world.css"]) {
   copyFileSync(join(root, "src", "renderer", file), join(out, file));
 }
 copyFileSync(join(root, "src", "renderer", "calibration3d.mjs"), join(out, "calibration3d.mjs"));

@@ -162,6 +162,16 @@ world. Use `make_default` to make that robot the world's default.
 }
 ```
 
+### `delete_robot_assignment`
+
+Removes a robot assignment from its world without touching physical hardware.
+
+```json
+{
+  "robot_id": "sim_so101_a"
+}
+```
+
 ### `list_virtual_entities`
 
 Lists virtual arms, cameras, and rigid bodies. Pass `world_id` to filter to one
@@ -202,6 +212,19 @@ Places a virtual camera in a virtual world.
 }
 ```
 
+### `create_virtual_light`
+
+Places a virtual light in a virtual world.
+
+```json
+{
+  "world_id": "world_...",
+  "name": "Key light",
+  "pose": { "x": 0, "y": -0.25, "z": 0.6 },
+  "spec": { "type": "area", "intensity": 1, "color": "#ffffff" }
+}
+```
+
 ### `create_virtual_rigid_body`
 
 Places a virtual rigid body in a virtual world. Collision is enabled by default;
@@ -229,6 +252,18 @@ Deletes a virtual arm, camera, or rigid body.
 ```json
 {
   "entity_id": "body_..."
+}
+```
+
+### `update_virtual_entity`
+
+Updates a virtual entity's name, pose, spec, or collision state.
+
+```json
+{
+  "entity_id": "camera_...",
+  "name": "Overhead camera",
+  "pose": { "x": 0.3, "y": -0.4, "z": 0.5 }
 }
 ```
 

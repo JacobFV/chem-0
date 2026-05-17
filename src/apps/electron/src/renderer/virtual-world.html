@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chem-0 Virtual World</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./virtual-world.css" />
+  </head>
+  <body>
+    <main class="vw-app">
+      <header class="vw-titlebar">
+        <div>
+          <h1 id="vw-title">Virtual world</h1>
+          <div id="vw-subtitle">world editor</div>
+        </div>
+        <button id="vw-refresh" class="ghost-icon" title="Refresh" aria-label="Refresh">
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5V6h-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </header>
+      <section class="vw-layout">
+        <aside class="vw-sidebar lhs">
+          <div class="vw-tabbar">
+            <button class="active" data-vw-lhs="toolbox">Toolbox</button>
+            <button data-vw-lhs="assets">Assets</button>
+          </div>
+          <section class="vw-pane active" data-vw-pane="toolbox">
+            <div class="vw-group">
+              <h2>Robot</h2>
+              <button class="vw-tool" data-create="arm" draggable="true">+ SO-101 arm</button>
+            </div>
+            <div class="vw-group">
+              <h2>Sensors</h2>
+              <button class="vw-tool" data-create="camera" draggable="true">+ Camera</button>
+            </div>
+            <div class="vw-group">
+              <h2>Lighting</h2>
+              <button class="vw-tool" data-create="light" draggable="true">+ Light</button>
+            </div>
+            <div class="vw-group">
+              <h2>Rigid bodies</h2>
+              <button class="vw-tool" data-create="box" draggable="true">+ Box</button>
+              <button class="vw-tool" data-create="vial" draggable="true">+ Vial proxy</button>
+            </div>
+          </section>
+          <section class="vw-pane" data-vw-pane="assets">
+            <ul id="vw-asset-list" class="list"></ul>
+          </section>
+        </aside>
+        <section class="vw-scene-shell">
+          <div id="vw-scene" class="vw-scene" aria-label="Virtual scene"></div>
+          <div id="vw-gimbal" class="vw-gimbal" hidden>
+            <button data-axis="y" data-delta="-0.02">↑</button>
+            <button data-axis="x" data-delta="-0.02">←</button>
+            <button data-axis="x" data-delta="0.02">→</button>
+            <button data-axis="y" data-delta="0.02">↓</button>
+            <button data-axis="z" data-delta="0.02">Z+</button>
+            <button data-axis="z" data-delta="-0.02">Z-</button>
+          </div>
+        </section>
+        <aside class="vw-sidebar rhs">
+          <div class="vw-tabbar">
+            <button class="active" data-vw-rhs="world">World</button>
+            <button data-vw-rhs="selected">Selected</button>
+            <button data-vw-rhs="physics">Physics</button>
+          </div>
+          <section class="vw-pane active" data-vw-pane="world">
+            <div class="vw-field">
+              <label for="vw-world-name">Name</label>
+              <input id="vw-world-name" />
+            </div>
+            <button id="vw-save-world" class="primary">Save world</button>
+          </section>
+          <section class="vw-pane" data-vw-pane="selected">
+            <div id="vw-selected-empty" class="list-empty">Select an object in the scene.</div>
+            <div id="vw-selected-form" hidden>
+              <div class="vw-field">
+                <label for="vw-object-name">Name</label>
+                <input id="vw-object-name" />
+              </div>
+              <div class="vw-grid3">
+                <input id="vw-pos-x" type="number" step="0.01" />
+                <input id="vw-pos-y" type="number" step="0.01" />
+                <input id="vw-pos-z" type="number" step="0.01" />
+              </div>
+              <label class="vw-check"><input id="vw-collision" type="checkbox" /> Collision</label>
+              <button id="vw-save-object" class="primary">Save object</button>
+              <button id="vw-delete-object" class="ghost">Remove</button>
+            </div>
+          </section>
+          <section class="vw-pane" data-vw-pane="physics">
+            <div class="vw-kv"><span>Collision mode</span><strong>full</strong></div>
+            <div class="vw-kv"><span>Arm collision</span><strong>rigid bodies</strong></div>
+            <div class="vw-kv"><span>Integrator</span><strong>external simulator pending</strong></div>
+          </section>
+        </aside>
+      </section>
+    </main>
+    <script>var exports = {};</script>
+    <script src="./virtual-world.js"></script>
+  </body>
+</html>

@@ -20,6 +20,7 @@ declare global {
       openTrainWindow: () => Promise<JsonObject>;
       openReplayWindow: () => Promise<JsonObject>;
       openSettingsWindow: () => Promise<JsonObject>;
+      openVirtualWorldWindow: (worldId: string) => Promise<JsonObject>;
       openWorkbenchWindow: (tab?: string) => Promise<JsonObject>;
       detachWorkbenchTab: (tab: string) => Promise<JsonObject>;
       onWorkbenchSetTab: (callback: (payload: { tab: string }) => void) => () => void;
@@ -324,6 +325,23 @@ function worldEntities(worldId: string): JsonObject[] {
   return virtualEntitiesCache.filter((entity) => String(entity.world_id) === worldId);
 }
 
+function iconSvg(name: "check" | "config" | "edit" | "trash" | "x"): string {
+  if (name === "check") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.2l3 3L13 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  if (name === "config") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2l.6 1.5 1.6-.3.4 1.5 1.5.7-.9 1.3.9 1.3-1.5.7-.4 1.5-1.6-.3L8 14l-.6-1.5-1.6.3-.4-1.5-1.5-.7.9-1.3-.9-1.3 1.5-.7.4-1.5 1.6.3z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>`;
+  if (name === "edit") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 11.8V14h2.2L12.5 6.7l-2.2-2.2L3 11.8zM9.7 5.1l2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  if (name === "trash") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 4h10M6 4V2.8h4V4M5 6v7M8 6v7M11 6v7M4.5 4l.5 10h6l.5-10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+}
+
+function makeGhostIcon(name: "check" | "config" | "edit" | "trash" | "x", label: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.className = "ghost-icon";
+  button.innerHTML = iconSvg(name);
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  return button;
+}
+
 async function createVirtualCameraInWorld(worldId: string): Promise<void> {
   const result = await window.chem0.callTool("create_virtual_camera", {
     world_id: worldId,
@@ -361,23 +379,37 @@ function appendWorldContents(li: HTMLLIElement, world: JsonObject): void {
   const assignments = worldAssignments(worldId);
   const entities = worldEntities(worldId);
 
-  const sections: Array<{ label: string; items: string[]; action?: { label: string; run: () => void } }> = [
+  type WorldRow = { id: string; label: string; kind: "robot" | "camera" | "rigid_body"; source: JsonObject };
+  const robotRows: WorldRow[] = assignments.map((item) => ({
+    id: String(item.robot_id),
+    label: `${String((item.metadata as JsonObject | undefined)?.label ?? item.robot_id)} · ${String(item.robot_kind)}`,
+    kind: "robot",
+    source: item
+  }));
+  const sections: Array<{ label: string; rows: WorldRow[]; action?: { label: string; run: () => void } }> = [
     {
       label: "arms",
-      items: assignments.map((item) => `${String(item.robot_id)} · ${String(item.robot_kind)}`)
+      rows: robotRows
     }
   ];
   if (world.type === "virtual") {
     sections.push({
       label: "cameras",
-      items: entities.filter((entity) => entity.kind === "camera").map((entity) => String(entity.name ?? entity.id)),
+      rows: entities
+        .filter((entity) => entity.kind === "camera")
+        .map((entity) => ({ id: String(entity.id), label: String(entity.name ?? entity.id), kind: "camera", source: entity })),
       action: { label: "+ Cam", run: () => void createVirtualCameraInWorld(worldId) }
     });
     sections.push({
       label: "objects",
-      items: entities
+      rows: entities
         .filter((entity) => entity.kind === "rigid_body")
-        .map((entity) => `${String(entity.name ?? entity.id)} · ${entity.collision_enabled ? "collision" : "passive"}`),
+        .map((entity) => ({
+          id: String(entity.id),
+          label: `${String(entity.name ?? entity.id)} · ${entity.collision_enabled ? "collision" : "passive"}`,
+          kind: "rigid_body",
+          source: entity
+        })),
       action: { label: "+ Object", run: () => void createVirtualRigidBodyInWorld(worldId) }
     });
   }
@@ -402,50 +434,72 @@ function appendWorldContents(li: HTMLLIElement, world: JsonObject): void {
       head.append(action);
     }
     block.append(head);
-    if (section.items.length === 0) {
+    if (section.rows.length === 0) {
       const empty = document.createElement("div");
       empty.className = "world-section-empty";
       empty.textContent = "none";
       block.append(empty);
     } else {
-      for (const item of section.items) {
-        const row = document.createElement("div");
-        row.className = "world-section-row";
-        row.textContent = item;
-        block.append(row);
+      for (const item of section.rows) {
+        block.append(renderWorldChildRow(item));
       }
     }
     expanded.append(block);
   }
-
-  const actions = document.createElement("div");
-  actions.className = "world-actions";
-  const edit = document.createElement("button");
-  edit.className = "ghost mini";
-  edit.textContent = "Edit";
-  edit.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openWorldModal("edit", String(world.type) === "virtual" ? "virtual" : "physical", world);
-  });
-  const del = document.createElement("button");
-  del.className = "ghost mini";
-  del.textContent = "Delete";
-  del.disabled = worldId === "world_physical_default";
-  del.addEventListener("click", async (event) => {
-    event.stopPropagation();
-    if (del.disabled) return;
-    try {
-      show(await window.chem0.callTool("delete_world", { world_id: worldId }));
-      selectedWorldId = "world_physical_default";
-      await refreshWorlds();
-      void refreshRobots();
-    } catch (error) {
-      show({ delete_world_error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-  actions.append(edit, del);
-  expanded.append(actions);
   li.append(expanded);
+}
+
+function renderWorldChildRow(item: { id: string; label: string; kind: "robot" | "camera" | "rigid_body"; source: JsonObject }): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "world-section-row";
+  const label = document.createElement("span");
+  label.textContent = item.label;
+  row.append(label);
+  const actions = document.createElement("span");
+  actions.className = "row-icon-actions";
+  const config = makeGhostIcon("config", `Configure ${item.kind}`);
+  config.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    const currentName = item.kind === "robot"
+      ? String(((item.source.metadata as JsonObject | undefined)?.label as string | undefined) ?? item.id)
+      : String(item.source.name ?? item.id);
+    const name = window.prompt("Name", currentName);
+    if (!name) return;
+    if (item.kind === "robot") {
+      const metadata = { ...((item.source.metadata as JsonObject | undefined) ?? {}), label: name };
+      const result = await window.chem0.callTool("assign_robot_to_world", {
+        robot_id: item.id,
+        world_id: String(item.source.world_id),
+        robot_kind: String(item.source.robot_kind),
+        port: typeof item.source.port === "string" ? item.source.port : null,
+        metadata
+      });
+      show(result);
+    } else {
+      show(await window.chem0.callTool("update_virtual_entity", { entity_id: item.id, name }));
+    }
+    await refreshWorlds();
+    void refreshRobots();
+  });
+  const remove = makeGhostIcon("x", `Remove ${item.kind}`);
+  remove.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    if (!window.confirm(`Remove ${item.label}?`)) return;
+    if (item.kind === "robot") {
+      const entityId = (item.source.metadata as JsonObject | undefined)?.entity_id;
+      const result = typeof entityId === "string"
+        ? await window.chem0.callTool("delete_virtual_entity", { entity_id: entityId })
+        : await window.chem0.callTool("delete_robot_assignment", { robot_id: item.id });
+      show(result);
+    } else {
+      show(await window.chem0.callTool("delete_virtual_entity", { entity_id: item.id }));
+    }
+    await refreshWorlds();
+    void refreshRobots();
+  });
+  actions.append(config, remove);
+  row.append(actions);
+  return row;
 }
 
 function renderWorldsList(): void {
@@ -469,14 +523,48 @@ function renderWorldsList(): void {
     li.className = "list-item";
     li.dataset.worldId = id;
     if (id === selectedWorldId) li.classList.add("active");
+    const header = document.createElement("div");
+    header.className = "world-title-row";
     const title = document.createElement("div");
     title.className = "title";
     title.textContent = String(world.name ?? id);
+    const titleActions = document.createElement("div");
+    titleActions.className = "row-icon-actions";
+    const edit = makeGhostIcon("edit", "Rename world");
+    edit.addEventListener("click", (event) => {
+      event.stopPropagation();
+      startWorldInlineEdit(header, title, world);
+    });
+    titleActions.append(edit);
+    if (world.type === "virtual") {
+      const config = makeGhostIcon("config", "Open virtual world editor");
+      config.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        show(await window.chem0.openVirtualWorldWindow(id));
+      });
+      titleActions.append(config);
+    }
+    const del = makeGhostIcon("trash", "Delete world");
+    del.disabled = id === "world_physical_default";
+    del.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (del.disabled || !window.confirm(`Delete ${String(world.name ?? id)}?`)) return;
+      try {
+        show(await window.chem0.callTool("delete_world", { world_id: id }));
+        selectedWorldId = "world_physical_default";
+        await refreshWorlds();
+        void refreshRobots();
+      } catch (error) {
+        show({ delete_world_error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+    titleActions.append(del);
+    header.append(title, titleActions);
     const sub = document.createElement("div");
     sub.className = "sub";
     const defaultRobot = world.default_robot_id ? `default ${String(world.default_robot_id)}` : "no default arm";
     sub.textContent = `${String(world.type ?? "world")} · ${defaultRobot}`;
-    li.append(title, sub);
+    li.append(header, sub);
     appendWorldContents(li, world);
     li.addEventListener("click", () => {
       selectedWorldId = id;
@@ -487,6 +575,32 @@ function renderWorldsList(): void {
     worldsList.append(li);
   }
   syncSelectedWorldState();
+}
+
+function startWorldInlineEdit(header: HTMLDivElement, title: HTMLDivElement, world: JsonObject): void {
+  const id = String(world.id);
+  const input = document.createElement("input");
+  input.className = "world-title-input";
+  input.value = String(world.name ?? id);
+  title.replaceWith(input);
+  const actions = header.querySelector<HTMLDivElement>(".row-icon-actions");
+  if (!actions) return;
+  actions.replaceChildren();
+  const save = makeGhostIcon("check", "Save world name");
+  save.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    const name = input.value.trim() || String(world.name ?? id);
+    show(await window.chem0.callTool("update_world", { world_id: id, name, metadata: (world.metadata as JsonObject) ?? {} }));
+    await refreshWorlds();
+  });
+  actions.append(save);
+  input.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") void save.click();
+    if (event.key === "Escape") renderWorldsList();
+  });
+  input.focus();
+  input.select();
 }
 
 async function refreshWorlds(): Promise<void> {

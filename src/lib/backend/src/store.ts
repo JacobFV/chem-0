@@ -339,7 +339,7 @@ export class Chem0Store {
     spec?: JsonObject;
     collisionEnabled?: boolean;
   }): VirtualWorldEntity {
-    if (!["arm", "camera", "rigid_body"].includes(input.kind)) throw new Error("Unknown virtual entity kind.");
+    if (!["arm", "camera", "light", "rigid_body"].includes(input.kind)) throw new Error("Unknown virtual entity kind.");
     const world = this.getWorld(input.worldId);
     if (!world) throw new Error(`Unknown world_id: ${input.worldId}`);
     if (world.type !== "virtual") throw new Error("Virtual entities can only be placed in virtual worlds.");
@@ -377,12 +377,46 @@ export class Chem0Store {
     return rows.map((row) => this.virtualEntityFromRow(row));
   }
 
+  updateVirtualEntity(input: {
+    entityId: string;
+    name?: string;
+    pose?: JsonObject;
+    spec?: JsonObject;
+    collisionEnabled?: boolean;
+  }): VirtualWorldEntity {
+    const current = this.query("select * from virtual_world_entities where id = ? limit 1", [input.entityId])[0];
+    if (!current) throw new Error(`Unknown virtual entity id: ${input.entityId}`);
+    const entity = this.virtualEntityFromRow(current);
+    const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : entity.name;
+    const pose = input.pose ?? entity.pose;
+    const spec = input.spec ?? entity.spec;
+    const collisionEnabled = input.collisionEnabled ?? entity.collision_enabled;
+    this.run(
+      "update virtual_world_entities set name = ?, pose_json = ?, spec_json = ?, collision_enabled = ?, updated_at = ? where id = ?",
+      [name, JSON.stringify(pose), JSON.stringify(spec), collisionEnabled ? 1 : 0, now(), input.entityId]
+    );
+    this.save();
+    const updated = this.query("select * from virtual_world_entities where id = ? limit 1", [input.entityId])[0];
+    if (!updated) throw new Error(`Unknown virtual entity id: ${input.entityId}`);
+    return this.virtualEntityFromRow(updated);
+  }
+
   deleteVirtualEntity(entityId: string): void {
     const entity = this.query("select * from virtual_world_entities where id = ? limit 1", [entityId])[0];
     if (!entity) throw new Error(`Unknown virtual entity id: ${entityId}`);
     const robotId = String(entity.id);
     this.run("delete from virtual_world_entities where id = ?", [entityId]);
     this.run("delete from robot_world_assignments where robot_id = ?", [robotId]);
+    this.save();
+  }
+
+  deleteRobotAssignment(robotId: string): void {
+    const id = robotId.trim();
+    if (!id) throw new Error("robot_id is required.");
+    this.run("delete from robot_world_assignments where robot_id = ?", [id]);
+    for (const world of this.listWorlds()) {
+      if (world.default_robot_id === id) this.setDefaultRobotForWorld(world.id, null);
+    }
     this.save();
   }
 

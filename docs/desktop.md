@@ -61,7 +61,9 @@ The console includes:
 - physical and virtual world creation/edit/deletion in the left-hand Worlds tab
   through a centered settings modal,
 - physical arm assignment plus virtual arm creation in the left-hand Arms tab,
-- virtual camera and rigid-body placement in virtual worlds,
+- inline world expansion showing assigned robots, cameras, and objects,
+- virtual camera, light, and rigid-body placement through the virtual world
+  editor window,
 - GPT-5.5 streaming agent session chat,
 - microphone recording for human speech transcription,
 - persisted session event replay,

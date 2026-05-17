@@ -100,20 +100,24 @@
 
           <section class="sidebar-pane" data-tab="lhs:worlds">
             <div class="pane-head">
-              <h2>Worlds</h2>
-              <button id="refresh-worlds" class="ghost mini">Refresh</button>
-            </div>
-            <div class="pane-body">
-              <div class="pane-section">
+              <div class="pane-head-icons">
+                <button id="refresh-worlds" class="ghost-icon" title="Refresh worlds" aria-label="Refresh worlds">
+                  <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5V6h-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
                 <div class="split-action">
-                  <button id="new-world-menu" class="ghost">+ New World</button>
+                  <button id="new-world-menu" class="ghost-icon" title="New world" aria-label="New world">
+                    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                  </button>
                   <div id="new-world-options" class="action-menu" hidden>
                     <button data-world-type="physical">+ New Physical World</button>
                     <button data-world-type="virtual">+ New Virtual World</button>
                   </div>
                 </div>
-                <select id="world-select" hidden aria-hidden="true"></select>
               </div>
+              <h2>Worlds</h2>
+            </div>
+            <div class="pane-body">
+              <select id="world-select" hidden aria-hidden="true"></select>
               <ul id="worlds-list" class="list" aria-label="Worlds"></ul>
             </div>
           </section>

@@ -115,6 +115,12 @@ export class Chem0Backend extends EventEmitter {
         }) as unknown as JsonObject
       };
     }
+    if (name === "delete_robot_assignment") {
+      const robotId = String(args.robot_id ?? "").trim();
+      if (!robotId) throw new Error("delete_robot_assignment requires robot_id.");
+      this.store.deleteRobotAssignment(robotId);
+      return { ok: true, robot_id: robotId };
+    }
     if (name === "list_virtual_entities") {
       const worldId = typeof args.world_id === "string" && args.world_id.trim() ? args.world_id : undefined;
       return { entities: this.store.listVirtualEntities(worldId) as unknown as JsonObject[] };
@@ -159,6 +165,23 @@ export class Chem0Backend extends EventEmitter {
         }) as unknown as JsonObject
       };
     }
+    if (name === "create_virtual_light") {
+      return {
+        entity: this.store.createVirtualEntity({
+          worldId: String(args.world_id ?? ""),
+          kind: "light",
+          name: String(args.name ?? "Virtual light"),
+          pose: (args.pose as JsonObject) ?? {},
+          spec: {
+            type: "area",
+            intensity: 1,
+            color: "#ffffff",
+            ...(args.spec && typeof args.spec === "object" && !Array.isArray(args.spec) ? (args.spec as JsonObject) : {})
+          },
+          collisionEnabled: false
+        }) as unknown as JsonObject
+      };
+    }
     if (name === "create_virtual_rigid_body") {
       return {
         entity: this.store.createVirtualEntity({
@@ -183,6 +206,17 @@ export class Chem0Backend extends EventEmitter {
       if (!entityId) throw new Error("delete_virtual_entity requires entity_id.");
       this.store.deleteVirtualEntity(entityId);
       return { ok: true, entity_id: entityId };
+    }
+    if (name === "update_virtual_entity") {
+      return {
+        entity: this.store.updateVirtualEntity({
+          entityId: String(args.entity_id ?? ""),
+          name: typeof args.name === "string" ? args.name : undefined,
+          pose: (args.pose as JsonObject) ?? undefined,
+          spec: (args.spec as JsonObject) ?? undefined,
+          collisionEnabled: typeof args.collision_enabled === "boolean" ? args.collision_enabled : undefined
+        }) as unknown as JsonObject
+      };
     }
     if (name === "list_agent_session_events") {
       return { events: this.store.listEvents(String(args.experiment_id)) as unknown as JsonObject[] };
@@ -603,6 +637,16 @@ export class Chem0Backend extends EventEmitter {
         }
       },
       {
+        name: "delete_robot_assignment",
+        description: "Remove a robot assignment from its world without touching physical hardware.",
+        inputSchema: {
+          type: "object",
+          properties: { robot_id: { type: "string" } },
+          required: ["robot_id"],
+          additionalProperties: false
+        }
+      },
+      {
         name: "list_virtual_entities",
         description: "List virtual arms, cameras, and rigid bodies placed in virtual worlds.",
         inputSchema: {
@@ -647,6 +691,21 @@ export class Chem0Backend extends EventEmitter {
         }
       },
       {
+        name: "create_virtual_light",
+        description: "Place a virtual light in a virtual world.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            world_id: { type: "string" },
+            name: { type: "string" },
+            pose: { type: "object", additionalProperties: true },
+            spec: { type: "object", additionalProperties: true }
+          },
+          required: ["world_id"],
+          additionalProperties: false
+        }
+      },
+      {
         name: "create_virtual_rigid_body",
         description:
           "Place a virtual rigid body in a virtual world with full collision enabled by default. Provide collision shape, dimensions, and mass through spec.",
@@ -669,6 +728,22 @@ export class Chem0Backend extends EventEmitter {
         inputSchema: {
           type: "object",
           properties: { entity_id: { type: "string" } },
+          required: ["entity_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "update_virtual_entity",
+        description: "Update virtual entity name, pose, spec, or collision state.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            entity_id: { type: "string" },
+            name: { type: "string" },
+            pose: { type: "object", additionalProperties: true },
+            spec: { type: "object", additionalProperties: true },
+            collision_enabled: { type: "boolean" }
+          },
           required: ["entity_id"],
           additionalProperties: false
         }

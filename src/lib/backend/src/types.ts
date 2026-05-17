@@ -56,7 +56,7 @@ export interface RobotWorldAssignment {
   updated_at: string;
 }
 
-export type VirtualEntityKind = "arm" | "camera" | "rigid_body";
+export type VirtualEntityKind = "arm" | "camera" | "light" | "rigid_body";
 
 export interface VirtualWorldEntity {
   id: string;

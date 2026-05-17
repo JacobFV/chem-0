@@ -133,6 +133,27 @@ function createSettingsWindow(): void {
   void win.loadFile(path.join(__dirname, "../renderer/settings.html"));
 }
 
+function createVirtualWorldWindow(worldId: string): void {
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 980,
+    minHeight: 640,
+    title: `${APP_NAME} Virtual World`,
+    ...platformTitleBarOptions(),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  windows.add(win);
+  win.on("closed", () => windows.delete(win));
+  void win.loadFile(path.join(__dirname, "../renderer/virtual-world.html"), {
+    search: `world_id=${encodeURIComponent(worldId)}`
+  });
+}
+
 function createCalibrationWindow(): void {
   const win = new BrowserWindow({
     width: 1040,
@@ -280,6 +301,11 @@ ipcMain.handle("chem0:detach-workbench-tab", async (_event, tab: string) => {
 ipcMain.handle("chem0:open-settings-window", async () => {
   createSettingsWindow();
   return { opened: true };
+});
+
+ipcMain.handle("chem0:open-virtual-world-window", async (_event, worldId: string) => {
+  createVirtualWorldWindow(worldId);
+  return { opened: true, world_id: worldId };
 });
 
 ipcMain.handle("chem0:get-settings", async () => settingsState);

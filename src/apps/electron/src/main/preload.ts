@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("chem0", {
   openTrainWindow: () => ipcRenderer.invoke("chem0:open-train-window"),
   openReplayWindow: () => ipcRenderer.invoke("chem0:open-replay-window"),
   openSettingsWindow: () => ipcRenderer.invoke("chem0:open-settings-window"),
+  openVirtualWorldWindow: (worldId: string) => ipcRenderer.invoke("chem0:open-virtual-world-window", worldId),
   openWorkbenchWindow: (tab?: string) => ipcRenderer.invoke("chem0:open-workbench-window", tab),
   detachWorkbenchTab: (tab: string) => ipcRenderer.invoke("chem0:detach-workbench-tab", tab),
   onWorkbenchSetTab: (callback: (payload: { tab: string }) => void) => {

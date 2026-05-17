@@ -1163,6 +1163,36 @@ button.ghost.mini {
   border-radius: 0;
 }
 
+.ghost-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  opacity: 0.18;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ghost-icon:hover,
+.ghost-icon:focus-visible {
+  opacity: 0.78;
+}
+
+.ghost-icon:disabled {
+  opacity: 0.08;
+  cursor: default;
+}
+
+.pane-head-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+}
+
 /* tighter inputs/buttons inside the new panes */
 .sidebar input,
 .sidebar select,
@@ -1248,16 +1278,12 @@ button.ghost.mini {
   position: relative;
 }
 
-.split-action > button {
-  width: 100%;
-}
-
 .action-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 4px);
   left: 0;
-  right: 0;
+  width: 190px;
   border: 1px solid var(--border-1);
   background: var(--bg-0);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.42);
@@ -1292,6 +1318,40 @@ button.ghost.mini {
   gap: 8px;
 }
 
+.world-title-row,
+.world-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.world-title-row .title,
+.world-section-row span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.world-title-input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--border-2);
+  background: var(--bg-0);
+  color: var(--text-1);
+  padding: 2px 5px;
+  font-size: 12px;
+  height: 24px;
+}
+
+.row-icon-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 1px;
+}
+
 .world-section-head {
   display: flex;
   align-items: center;
@@ -1313,19 +1373,9 @@ button.ghost.mini {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .world-section-empty { color: var(--text-4); }
-
-.world-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: 2px;
-}
 
 .modal-backdrop {
   position: fixed;

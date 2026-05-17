@@ -166,12 +166,12 @@ function createScene(container) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
-  camera.up.set(0, 0, 1);
   const orbit = {
     target: new THREE.Vector3(0, 0, 0.16),
     radius: 2.9,
-    theta: -0.84,
-    phi: 1.12,
+    orientation: new THREE.Quaternion()
+      .setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.84)
+      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 1.12)),
     dragging: false,
     lastX: 0,
     lastY: 0
@@ -192,13 +192,9 @@ function createScene(container) {
 }
 
 function updateOrbitCamera(camera, orbit) {
-  const sinPhi = Math.sin(orbit.phi);
-  camera.position.set(
-    orbit.target.x + orbit.radius * sinPhi * Math.cos(orbit.theta),
-    orbit.target.y + orbit.radius * sinPhi * Math.sin(orbit.theta),
-    orbit.target.z + orbit.radius * Math.cos(orbit.phi)
-  );
-  camera.lookAt(orbit.target);
+  const offset = new THREE.Vector3(0, 0, orbit.radius).applyQuaternion(orbit.orientation);
+  camera.position.copy(orbit.target).add(offset);
+  camera.quaternion.copy(orbit.orientation);
 }
 
 function installOrbitControls(element, state, update) {
@@ -214,8 +210,11 @@ function installOrbitControls(element, state, update) {
     const dy = event.clientY - state.lastY;
     state.lastX = event.clientX;
     state.lastY = event.clientY;
-    state.theta -= dx * 0.008;
-    state.phi -= dy * 0.008;
+    const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(state.orientation);
+    const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(state.orientation);
+    const yaw = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * 0.008);
+    const pitch = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * 0.008);
+    state.orientation.premultiply(yaw).premultiply(pitch).normalize();
     update();
   });
   element.addEventListener("pointerup", (event) => {

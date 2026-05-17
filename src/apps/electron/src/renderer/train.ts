@@ -1,11 +1,21 @@
-export {};
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonObject = { [key: string]: JsonValue };
 
-declare global {
-  interface Window {
-    chem0: {
-      callTool: (name: string, args?: Record<string, unknown>) => Promise<Record<string, unknown>>;
-    };
+const api = (window as unknown as { chem0: { callTool: (name: string, args?: Record<string, unknown>) => Promise<JsonObject> } }).chem0;
+
+function textContent(result: JsonObject): string {
+  const c = result.content;
+  if (Array.isArray(c) && c.length > 0 && typeof c[0] === "object" && c[0] !== null) {
+    const text = (c[0] as JsonObject).text;
+    return typeof text === "string" ? text : "";
   }
+  return "";
+}
+
+function safeParse(result: JsonObject): JsonObject {
+  const t = textContent(result);
+  if (!t) return result;
+  try { return JSON.parse(t) as JsonObject; } catch { return result; }
 }
 
 const datasetInput = document.querySelector<HTMLInputElement>("#train-dataset")!;
@@ -25,7 +35,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function startTraining() {
   if (sessionId) return;
-  const result = await window.chem0.callTool("train_policy", {
+  const result = await api.callTool("train_policy", {
     dataset_repo_id: datasetInput.value.trim(),
     policy_type: policySelect.value,
     steps: parseInt(stepsInput.value, 10) || 50000,
@@ -34,11 +44,11 @@ async function startTraining() {
     wandb_enable: false,
   });
   if (result.isError) {
-    statusPre.textContent = `Error: ${result.content?.[0]?.text ?? "unknown"}`;
+    statusPre.textContent = `Error: ${textContent(result) || "unknown"}`;
     return;
   }
-  const parsed = typeof result.content?.[0]?.text === "string" ? JSON.parse(result.content[0].text) : result;
-  sessionId = parsed.session_id ?? "";
+  const parsed = safeParse(result);
+  sessionId = (parsed.session_id as string) ?? "";
   statusPre.textContent = "Training started";
   startBtn.disabled = true;
   stopBtn.disabled = false;
@@ -48,28 +58,27 @@ async function startTraining() {
 
 async function stopTraining() {
   if (!sessionId) return;
-  const result = await window.chem0.callTool("stop_training", { session_id: sessionId });
+  const result = await api.callTool("stop_training", { session_id: sessionId });
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   sessionId = "";
   startBtn.disabled = false;
   stopBtn.disabled = true;
   statusPre.textContent = "Training stopped";
-  if (result.content?.[0]?.text) {
-    logPre.textContent += "\n--- STOPPED ---\n" + result.content[0].text;
-  }
+  const t = textContent(result);
+  if (t) logPre.textContent += "\n--- STOPPED ---\n" + t;
 }
 
 async function pollStatus() {
   if (!sessionId) return;
-  const result = await window.chem0.callTool("get_training_status", { session_id: sessionId });
+  const result = await api.callTool("get_training_status", { session_id: sessionId });
   if (result.isError) {
-    statusPre.textContent = `Poll error: ${result.content?.[0]?.text ?? "unknown"}`;
+    statusPre.textContent = `Poll error: ${textContent(result) || "unknown"}`;
     return;
   }
-  const parsed = typeof result.content?.[0]?.text === "string" ? JSON.parse(result.content[0].text) : result;
+  const parsed = safeParse(result);
   const done = parsed.done === true;
   const alive = parsed.alive === true;
-  const lines = (parsed.log_lines ?? []) as string[];
+  const lines = (parsed.log_lines as string[]) ?? [];
 
   for (const line of lines) {
     if (!logPre.textContent.includes(line)) {
@@ -98,13 +107,13 @@ async function pollStatus() {
 }
 
 async function listCheckpoints() {
-  const result = await window.chem0.callTool("list_checkpoints", { output_dir: outputDirInput.value.trim() || "outputs/train" });
+  const result = await api.callTool("list_checkpoints", { output_dir: outputDirInput.value.trim() || "outputs/train" });
   if (result.isError) {
     checkpointDiv.textContent = "Error listing checkpoints";
     return;
   }
-  const parsed = typeof result.content?.[0]?.text === "string" ? JSON.parse(result.content[0].text) : result;
-  const checkpoints = (parsed.checkpoints ?? []) as Array<{ step: number; path: string; parent: string }>;
+  const parsed = safeParse(result);
+  const checkpoints = (parsed.checkpoints as Array<{ step: number; path: string; parent: string }>) ?? [];
   if (checkpoints.length === 0) {
     checkpointDiv.textContent = "No checkpoints found.";
     return;

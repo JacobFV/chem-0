@@ -1,11 +1,21 @@
-export {};
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonObject = { [key: string]: JsonValue };
 
-declare global {
-  interface Window {
-    chem0: {
-      callTool: (name: string, args?: Record<string, unknown>) => Promise<Record<string, unknown>>;
-    };
+const api = (window as unknown as { chem0: { callTool: (name: string, args?: Record<string, unknown>) => Promise<JsonObject> } }).chem0;
+
+function textContent(result: JsonObject): string {
+  const c = result.content;
+  if (Array.isArray(c) && c.length > 0 && typeof c[0] === "object" && c[0] !== null) {
+    const text = (c[0] as JsonObject).text;
+    return typeof text === "string" ? text : "";
   }
+  return "";
+}
+
+function safeParse(result: JsonObject): JsonObject {
+  const t = textContent(result);
+  if (!t) return result;
+  try { return JSON.parse(t) as JsonObject; } catch { return result; }
 }
 
 const datasetInput = document.querySelector<HTMLInputElement>("#replay-dataset")!;
@@ -32,17 +42,17 @@ async function startReplay() {
   const port = portInput.value.trim();
   if (port) args.port = port;
 
-  const result = await window.chem0.callTool("replay_episode", args);
+  const result = await api.callTool("replay_episode", args);
   startBtn.disabled = false;
 
   if (result.isError) {
     statusPre.textContent = "Replay failed";
-    resultPre.textContent = result.content?.[0]?.text ?? "unknown error";
+    resultPre.textContent = textContent(result) || "unknown error";
     return;
   }
 
-  const parsed = typeof result.content?.[0]?.text === "string" ? JSON.parse(result.content[0].text) : result;
-  statusPre.textContent = `Replay complete: ${parsed.frames_replayed ?? 0} frames replayed`;
+  const parsed = safeParse(result);
+  statusPre.textContent = `Replay complete: ${String(parsed.frames_replayed ?? 0)} frames replayed`;
   resultPre.textContent = JSON.stringify(parsed, null, 2);
 }
 

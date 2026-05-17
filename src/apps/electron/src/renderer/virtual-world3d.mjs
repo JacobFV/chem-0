@@ -30,7 +30,7 @@ const transform = new TransformControls(camera, renderer.domElement);
 transform.setMode("translate");
 transform.setSpace("world");
 transform.setSize(0.85);
-scene.add(transform);
+scene.add(transform.getHelper());
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x202020, 1.4));
 const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);

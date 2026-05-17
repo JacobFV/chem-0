@@ -54,6 +54,10 @@
             <input id="target-episodes" type="number" value="5" min="1" max="50" />
           </div>
           <div class="record-picker-field">
+            <label for="repo-id">Dataset repo ID</label>
+            <input id="repo-id" placeholder="myuser/my-dataset" />
+          </div>
+          <div class="record-picker-field">
             <label for="experiment-id">Experiment</label>
             <input id="experiment-id" placeholder="exp_xxx" />
           </div>
@@ -73,7 +77,7 @@
           <span id="task-label" class="record-task-label">pick-and-pour</span>
           <span id="record-status" class="record-status-label">ready</span>
           <button id="rec-button" class="step-button">START RECORD</button>
-          <button id="stop-teleop-button" class="ghost-button">Stop Teleop</button>
+          <button id="stop-session-button" class="ghost-button">Stop Teleop</button>
         </div>
         <div id="record-error" class="step-error" hidden></div>
       </section>

@@ -112,6 +112,44 @@ function createRecordWindow(): void {
   void win.loadFile(path.join(__dirname, "../renderer/record.html"));
 }
 
+function createTrainWindow(): void {
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 900,
+    minHeight: 600,
+    title: `${APP_NAME} Train`,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false
+    }
+  });
+  windows.add(win);
+  win.on("closed", () => windows.delete(win));
+  void win.loadFile(path.join(__dirname, "../renderer/train.html"));
+}
+
+function createReplayWindow(): void {
+  const win = new BrowserWindow({
+    width: 700,
+    height: 500,
+    minWidth: 600,
+    minHeight: 400,
+    title: `${APP_NAME} Replay`,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false
+    }
+  });
+  windows.add(win);
+  win.on("closed", () => windows.delete(win));
+  void win.loadFile(path.join(__dirname, "../renderer/replay.html"));
+}
+
 app.whenReady().then(async () => {
   installApplicationMenu();
   app.setAboutPanelOptions({
@@ -166,5 +204,15 @@ ipcMain.handle("chem0:open-calibration-window", async () => {
 
 ipcMain.handle("chem0:open-record-window", async () => {
   createRecordWindow();
+  return { opened: true };
+});
+
+ipcMain.handle("chem0:open-train-window", async () => {
+  createTrainWindow();
+  return { opened: true };
+});
+
+ipcMain.handle("chem0:open-replay-window", async () => {
+  createReplayWindow();
   return { opened: true };
 });

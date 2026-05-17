@@ -9,7 +9,7 @@ mkdirSync(out, { recursive: true });
 rmSync(join(out, "calibration.js"), { force: true });
 rmSync(join(out, "calibration.js.map"), { force: true });
 
-for (const file of ["index.html", "calibration.html", "record.html", "styles.css", "record-styles.css"]) {
+for (const file of ["index.html", "calibration.html", "record.html", "train.html", "replay.html", "styles.css", "record-styles.css"]) {
   copyFileSync(join(root, "src", "renderer", file), join(out, file));
 }
 copyFileSync(join(root, "src", "renderer", "calibration3d.mjs"), join(out, "calibration3d.mjs"));

@@ -30,6 +30,7 @@ const posZInput = document.querySelector<HTMLInputElement>("#vw-pos-z")!;
 const collisionInput = document.querySelector<HTMLInputElement>("#vw-collision")!;
 const saveObjectBtn = document.querySelector<HTMLButtonElement>("#vw-save-object")!;
 const deleteObjectBtn = document.querySelector<HTMLButtonElement>("#vw-delete-object")!;
+const sceneEl = document.querySelector<HTMLElement>("#vw-scene")!;
 
 let world: JsonObject | null = null;
 let entities: JsonObject[] = [];
@@ -41,6 +42,23 @@ type VirtualWorldEditorApi = {
   selectEntity: (id: string) => void;
   updateEntityPose: (id: string, pose: JsonObject) => Promise<void>;
 };
+
+type ToolboxDrag = {
+  kind: string;
+  pointerId: number;
+  source: HTMLButtonElement;
+  moved: boolean;
+  startX: number;
+  startY: number;
+};
+
+let toolboxDrag: ToolboxDrag | null = null;
+let suppressToolClick = false;
+
+function pointInScene(x: number, y: number): boolean {
+  const rect = sceneEl.getBoundingClientRect();
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
 
 function poseOf(entity: JsonObject): JsonObject {
   const pose = entity.pose;
@@ -163,12 +181,51 @@ async function createEntity(kind: string, poseOverride: JsonObject = {}): Promis
 }
 
 for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-create]")) {
-  btn.addEventListener("click", () => void createEntity(btn.dataset.create ?? "box"));
-  btn.addEventListener("dragstart", (event) => {
+  btn.addEventListener("click", (event) => {
+    if (suppressToolClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressToolClick = false;
+      return;
+    }
+    void createEntity(btn.dataset.create ?? "box");
+  });
+  btn.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
     const kind = btn.dataset.create ?? "box";
-    event.dataTransfer?.setData("text/plain", kind);
-    event.dataTransfer?.setData("application/x-chem0-asset", kind);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+    toolboxDrag = {
+      kind,
+      pointerId: event.pointerId,
+      source: btn,
+      moved: false,
+      startX: event.clientX,
+      startY: event.clientY
+    };
+    btn.classList.add("dragging");
+    btn.setPointerCapture(event.pointerId);
+  });
+  btn.addEventListener("pointermove", (event) => {
+    if (!toolboxDrag || toolboxDrag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - toolboxDrag.startX;
+    const dy = event.clientY - toolboxDrag.startY;
+    if (Math.hypot(dx, dy) > 4) toolboxDrag.moved = true;
+  });
+  btn.addEventListener("pointerup", (event) => {
+    const drag = toolboxDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    toolboxDrag = null;
+    drag.source.classList.remove("dragging");
+    drag.source.releasePointerCapture(event.pointerId);
+    if (!drag.moved || !pointInScene(event.clientX, event.clientY)) return;
+    suppressToolClick = true;
+    event.preventDefault();
+    event.stopPropagation();
+    window.dispatchEvent(new CustomEvent("vw:create-at-point", { detail: { kind: drag.kind, clientX: event.clientX, clientY: event.clientY } }));
+  });
+  btn.addEventListener("pointercancel", (event) => {
+    if (!toolboxDrag || toolboxDrag.pointerId !== event.pointerId) return;
+    toolboxDrag.source.classList.remove("dragging");
+    toolboxDrag = null;
   });
 }
 

@@ -274,6 +274,10 @@ function dragKind(event) {
   return ["arm", "camera", "light", "box", "vial"].includes(kind) ? kind : "";
 }
 
+function validKind(kind) {
+  return ["arm", "camera", "light", "box", "vial"].includes(kind) ? kind : "";
+}
+
 function handleDragOver(event) {
   if (!sceneContainsPoint(event)) return;
   event.preventDefault();
@@ -304,6 +308,25 @@ async function handleDrop(event) {
 
 document.addEventListener("dragover", handleDragOver, true);
 document.addEventListener("drop", (event) => void handleDrop(event), true);
+
+window.addEventListener("vw:create-at-point", (event) => {
+  const detail = event.detail || {};
+  const kind = validKind(String(detail.kind || ""));
+  const clientX = Number(detail.clientX);
+  const clientY = Number(detail.clientY);
+  if (!kind || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    showDropStatus("Invalid toolbox placement", true);
+    console.error("Virtual world placement ignored: invalid toolbox placement event.", detail);
+    return;
+  }
+  const point = pointerToGround({ clientX, clientY });
+  showDropStatus(`Adding ${kind}`);
+  void editorApi()?.createEntity?.(kind, { x: point.x, y: point.y, z: kind === "camera" ? 0.4 : kind === "light" ? 0.6 : 0 }).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    showDropStatus(`Add failed: ${message}`, true);
+    console.error("Virtual world asset creation failed.", error);
+  });
+});
 
 transform.addEventListener("dragging-changed", (event) => {
   draggingTransform = Boolean(event.value);

@@ -840,6 +840,45 @@ pre {
   white-space: pre-wrap;
 }
 
+.servo-table-wrap {
+  max-height: 160px;
+  overflow-y: auto;
+  width: 100%;
+  max-width: min(700px, 90vw);
+}
+.servo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.servo-table th {
+  position: sticky;
+  top: 0;
+  background: rgba(0, 0, 0, 0.9);
+  color: var(--text-3);
+  font-weight: 500;
+  padding: 3px 6px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-2);
+  letter-spacing: 0.04em;
+}
+.servo-table th:first-child { text-align: left; }
+.servo-table td {
+  padding: 2px 6px;
+  text-align: center;
+  color: var(--text-2);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.servo-table td:first-child {
+  text-align: left;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.servo-table tr:hover td { background: rgba(255,255,255,0.03); }
+.servo-table .delta-pos { color: #6ee7c8; }
+.servo-table .delta-neg { color: #ffb4b4; }
+
 .calibration-fatal {
   position: absolute;
   inset: 24px;

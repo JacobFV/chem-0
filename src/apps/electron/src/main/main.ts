@@ -240,6 +240,14 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+ipcMain.handle("chem0:read-json-file", async (_event, filePath: string) => {
+  try {
+    const text = fs.readFileSync(filePath, "utf8");
+    return { ok: true, data: JSON.parse(text) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
 ipcMain.handle("chem0:tools-list", async () => backend.listTools());
 ipcMain.handle("chem0:resource-read", async (_event, uri: string) => backend.readResource(uri));
 ipcMain.handle("chem0:urdf-read", async () => ({

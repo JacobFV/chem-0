@@ -82,6 +82,17 @@ let mode = "prepare";
 let busy = false;
 let pollPaused = false;
 
+// ── Multi-arm state for servo comparison table ──────────────────────────
+const JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"];
+let allArms = [];              // [{port, robotId, label}, ...]
+let armA = null;               // arm being calibrated (selected arm)
+let armB = null;               // other detected arm
+let prevCalA = null;           // previous calibration data for arm A
+let prevCalB = null;           // previous calibration data for arm B
+let liveA = {};                // live raw positions for arm A
+let liveB = {};                // live raw positions for arm B
+let calHomeDir = "";           // detected home directory from platform
+
 let scene;
 let camera;
 let renderer;

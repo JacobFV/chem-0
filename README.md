@@ -345,6 +345,10 @@ get_arm_pose/set_arm_pose for joint-space moves or get_position/set_position
 for IK moves. Keep max_step <= 5 and stay inside calibrated limits.
 ```
 
+
+Calibration:
+You can either use the electron app to calibrate the arm with the UI, or run `uv run python scripts/watch_servo_calibration.py /dev/tty.usbmodem5A7A0187661` (replace with leader/follower port) to see joint results being polled per 2 seconds.
+
 Optional voice environment:
 
 ```sh

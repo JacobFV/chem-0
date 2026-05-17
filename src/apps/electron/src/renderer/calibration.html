@@ -41,6 +41,27 @@
           <h2 id="cue-verb" class="step-verb pulse">Move the arm</h2>
         </div>
         <div id="step-status" class="step-status">step</div>
+        <div id="servo-table-wrap" class="servo-table-wrap">
+          <table id="servo-table" class="servo-table">
+            <thead>
+              <tr>
+                <th>Joint</th>
+                <th colspan="3" id="arm-a-header">Arm A</th>
+                <th colspan="3" id="arm-b-header">Arm B</th>
+              </tr>
+              <tr>
+                <th></th>
+                <th>Current</th>
+                <th>Prev Cal</th>
+                <th>Δ</th>
+                <th>Current</th>
+                <th>Prev Cal</th>
+                <th>Δ</th>
+              </tr>
+            </thead>
+            <tbody id="servo-tbody"></tbody>
+          </table>
+        </div>
         <div id="step-error" class="step-error" hidden></div>
         <button id="step-button" class="step-button">RECORD</button>
       </section>

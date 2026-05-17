@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("chem0", {
   listEvents: (experimentId: string) => ipcRenderer.invoke("chem0:list-events", experimentId),
   listArtifacts: (experimentId: string) => ipcRenderer.invoke("chem0:list-artifacts", experimentId),
   sendAgentMessage: (input: JsonObject) => ipcRenderer.invoke("chem0:agent-message", input),
+  readJsonFile: (filePath: string) => ipcRenderer.invoke("chem0:read-json-file", filePath),
   openCalibrationWindow: () => ipcRenderer.invoke("chem0:open-calibration-window"),
   openRecordWindow: () => ipcRenderer.invoke("chem0:open-record-window"),
   openTrainWindow: () => ipcRenderer.invoke("chem0:open-train-window"),
@@ -28,6 +29,7 @@ contextBridge.exposeInMainWorld("chem0", {
     return () => ipcRenderer.removeListener("chem0:workbench-set-tab", listener);
   },
   platform: process.platform,
+  homedir: require("os").homedir(),
   getSettings: () => ipcRenderer.invoke("chem0:get-settings"),
   setSetting: (key: string, value: unknown) => ipcRenderer.invoke("chem0:set-setting", key, value),
   onSettingsChanged: (callback: (settings: JsonObject) => void) => {

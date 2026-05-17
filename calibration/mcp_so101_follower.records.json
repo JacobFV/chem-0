@@ -29,44 +29,45 @@
     "shoulder_pan": {
       "id": 1,
       "drive_mode": 0,
-      "homing_offset": 215,
-      "range_min": 1359,
-      "range_max": 2735
+      "homing_offset": 542,
+      "range_min": 1345,
+      "range_max": 2749
     },
     "shoulder_lift": {
       "id": 2,
       "drive_mode": 0,
-      "homing_offset": 1137,
-      "range_min": 1237,
-      "range_max": 2858
+      "homing_offset": 287,
+      "range_min": 1260,
+      "range_max": 2835
     },
     "elbow_flex": {
       "id": 3,
       "drive_mode": 0,
-      "homing_offset": 109,
-      "range_min": 1102,
-      "range_max": 2992
+      "homing_offset": -671,
+      "range_min": 1110,
+      "range_max": 2985
     },
     "wrist_flex": {
       "id": 4,
       "drive_mode": 0,
-      "homing_offset": 155,
-      "range_min": 1170,
-      "range_max": 2924
+      "homing_offset": 537,
+      "range_min": 1181,
+      "range_max": 2914
     },
     "wrist_roll": {
       "id": 5,
       "drive_mode": 0,
-      "homing_offset": -264,
-      "range_min": 1698,
-      "range_max": 2396
+      "homing_offset": 531,
+      "range_min": 1580,
+      "range_max": 3161
     },
     "gripper": {
       "id": 6,
       "drive_mode": 0,
-      "homing_offset": -121,
-      "range_min": 742,
-      "range_max": 3353
+      "homing_offset": 219,
+      "range_min": 761,
+      "range_max": 3334
     }
-  }
+  },
+  "note": "records block preserves the follower arm's original physical endpoints from its prior deterministic cal session. calibration block was overwritten from mcp_so101.json (includes manual wrist_roll widening from records-derived [1922, 2171] to [1580, 3161])."
 }

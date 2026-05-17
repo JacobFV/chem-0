@@ -52,7 +52,6 @@ const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
 const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
 const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
 const recordAudio = document.querySelector<HTMLButtonElement>("#record-audio")!;
-const stopAudio = document.querySelector<HTMLButtonElement>("#stop-audio")!;
 const phCanvas = document.querySelector<HTMLCanvasElement>("#ph-canvas");
 const workspace = document.querySelector<HTMLDivElement>(".workspace")!;
 const lhsSidebar = document.querySelector<HTMLElement>("#sidebar-lhs")!;
@@ -604,7 +603,36 @@ setDefaultRobot.addEventListener("click", async () => {
   await applyDefaultRobot(robotId);
 });
 
+/* ---------- send / stop (single button that toggles) ---------- */
+
+let inFlight = false;
+let inFlightIdleTimer: ReturnType<typeof setTimeout> | null = null;
+const IN_FLIGHT_IDLE_MS = 3000;
+
+function setInFlight(value: boolean): void {
+  inFlight = value;
+  sendMessage.classList.toggle("in-flight", value);
+  sendMessage.setAttribute("aria-label", value ? "Stop response" : "Send message");
+  if (!value && inFlightIdleTimer) {
+    clearTimeout(inFlightIdleTimer);
+    inFlightIdleTimer = null;
+  }
+}
+
+function bumpInFlightIdle(): void {
+  if (!inFlight) return;
+  if (inFlightIdleTimer) clearTimeout(inFlightIdleTimer);
+  inFlightIdleTimer = setTimeout(() => setInFlight(false), IN_FLIGHT_IDLE_MS);
+}
+
 sendMessage.addEventListener("click", async () => {
+  if (inFlight) {
+    // Best-effort UI stop: backend cancellation isn't wired yet, so we just
+    // release the in-flight state so the user can compose a new message.
+    setInFlight(false);
+    assistantBubble = null;
+    return;
+  }
   await sendToAgent(chatInput.value);
 });
 
@@ -613,6 +641,8 @@ async function sendToAgent(raw: string): Promise<void> {
   if (!message || !experimentId) return;
   chatInput.value = "";
   assistantBubble = null;
+  setInFlight(true);
+  bumpInFlightIdle();
   const payload: JsonObject = {
     experiment_id: experimentId,
     message,
@@ -629,7 +659,9 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
-recordAudio.addEventListener("click", async () => {
+/* ---------- record voice (single toggling button) ---------- */
+
+async function startVoiceRecording(): Promise<void> {
   if (!experimentId) {
     show("Create or select an experiment before recording audio.");
     return;
@@ -644,19 +676,20 @@ recordAudio.addEventListener("click", async () => {
     for (const track of stream.getTracks()) track.stop();
   });
   mediaRecorder.start();
-  recordAudio.disabled = true;
-  stopAudio.disabled = false;
-  appendChat("system", "Recording human audio...");
-});
+  recordAudio.classList.add("recording");
+  recordAudio.setAttribute("aria-label", "Stop recording");
+  appendChat("system", "Recording human audio…");
+}
 
-stopAudio.addEventListener("click", async () => {
+async function stopVoiceRecording(): Promise<void> {
   if (!mediaRecorder) return;
-  const stopped = new Promise<void>((resolve) => mediaRecorder?.addEventListener("stop", () => resolve(), { once: true }));
-  mediaRecorder.stop();
+  const recorder = mediaRecorder;
+  const stopped = new Promise<void>((resolve) => recorder.addEventListener("stop", () => resolve(), { once: true }));
+  recorder.stop();
   await stopped;
-  recordAudio.disabled = false;
-  stopAudio.disabled = true;
-  const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+  recordAudio.classList.remove("recording");
+  recordAudio.setAttribute("aria-label", "Record voice");
+  const blob = new Blob(recordedChunks, { type: recorder.mimeType || "audio/webm" });
   mediaRecorder = null;
   const result = await call("listen_to_human", {
     audio_base64: await blobToBase64(blob),
@@ -664,20 +697,30 @@ stopAudio.addEventListener("click", async () => {
   });
   const text = typeof result.text === "string" ? result.text.trim() : "";
   if (text) await sendToAgent(text);
+}
+
+recordAudio.addEventListener("click", async () => {
+  if (mediaRecorder) await stopVoiceRecording();
+  else await startVoiceRecording();
 });
 
 window.chem0.onAgentEvent((event) => {
   if (event.experiment_id !== experimentId) return;
   if (event.session_id && !sessionId) sessionId = String(event.session_id);
-  if (event.type === "message") appendChat(String(event.role ?? "user"), String(event.text ?? ""));
+  if (event.type === "message") {
+    appendChat(String(event.role ?? "user"), String(event.text ?? ""));
+    if (event.role === "assistant") setInFlight(false);
+  }
   if (event.type === "assistant_delta") {
     if (!assistantBubble) assistantBubble = appendChat("assistant", "");
     assistantBubble.textContent += String(event.text ?? "");
     chatLog.scrollTop = chatLog.scrollHeight;
+    bumpInFlightIdle();
   }
   if (event.type === "tool_response") {
     appendToolBubble(String(event.name ?? "tool"), event.result as JsonObject | undefined);
     assistantBubble = null;
+    bumpInFlightIdle();
   }
   if (event.type === "ph_sample") {
     const v = Number(event.value);
@@ -687,7 +730,10 @@ window.chem0.onAgentEvent((event) => {
       drawPhChart();
     }
   }
-  if (event.type === "error") appendChat("error", String(event.message ?? ""));
+  if (event.type === "error") {
+    appendChat("error", String(event.message ?? ""));
+    setInFlight(false);
+  }
 });
 
 window.addEventListener("resize", () => drawPhChart());

@@ -60,6 +60,37 @@ function pointInScene(x: number, y: number): boolean {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
+function finishToolboxDrag(event: PointerEvent): void {
+  const drag = toolboxDrag;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  toolboxDrag = null;
+  drag.source.classList.remove("dragging");
+  if (!drag.moved) return;
+  suppressToolClick = true;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!pointInScene(event.clientX, event.clientY)) return;
+  window.dispatchEvent(new CustomEvent("vw:create-at-point", { detail: { kind: drag.kind, clientX: event.clientX, clientY: event.clientY } }));
+}
+
+function cancelToolboxDrag(event: PointerEvent): void {
+  if (!toolboxDrag || toolboxDrag.pointerId !== event.pointerId) return;
+  toolboxDrag.source.classList.remove("dragging");
+  toolboxDrag = null;
+}
+
+window.addEventListener("pointermove", (event) => {
+  if (!toolboxDrag || toolboxDrag.pointerId !== event.pointerId) return;
+  const dx = event.clientX - toolboxDrag.startX;
+  const dy = event.clientY - toolboxDrag.startY;
+  if (Math.hypot(dx, dy) <= 4) return;
+  toolboxDrag.moved = true;
+  event.preventDefault();
+}, true);
+
+window.addEventListener("pointerup", finishToolboxDrag, true);
+window.addEventListener("pointercancel", cancelToolboxDrag, true);
+
 function poseOf(entity: JsonObject): JsonObject {
   const pose = entity.pose;
   return pose && typeof pose === "object" && !Array.isArray(pose) ? (pose as JsonObject) : {};
@@ -192,6 +223,7 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-create]"))
   });
   btn.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
+    event.preventDefault();
     const kind = btn.dataset.create ?? "box";
     toolboxDrag = {
       kind,
@@ -202,30 +234,6 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-create]"))
       startY: event.clientY
     };
     btn.classList.add("dragging");
-    btn.setPointerCapture(event.pointerId);
-  });
-  btn.addEventListener("pointermove", (event) => {
-    if (!toolboxDrag || toolboxDrag.pointerId !== event.pointerId) return;
-    const dx = event.clientX - toolboxDrag.startX;
-    const dy = event.clientY - toolboxDrag.startY;
-    if (Math.hypot(dx, dy) > 4) toolboxDrag.moved = true;
-  });
-  btn.addEventListener("pointerup", (event) => {
-    const drag = toolboxDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    toolboxDrag = null;
-    drag.source.classList.remove("dragging");
-    drag.source.releasePointerCapture(event.pointerId);
-    if (!drag.moved || !pointInScene(event.clientX, event.clientY)) return;
-    suppressToolClick = true;
-    event.preventDefault();
-    event.stopPropagation();
-    window.dispatchEvent(new CustomEvent("vw:create-at-point", { detail: { kind: drag.kind, clientX: event.clientX, clientY: event.clientY } }));
-  });
-  btn.addEventListener("pointercancel", (event) => {
-    if (!toolboxDrag || toolboxDrag.pointerId !== event.pointerId) return;
-    toolboxDrag.source.classList.remove("dragging");
-    toolboxDrag = null;
   });
 }
 

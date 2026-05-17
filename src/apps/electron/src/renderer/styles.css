@@ -1097,7 +1097,8 @@ body.platform-linux .appbar { padding-left: 0; padding-right: 140px; }
   transform: translateX(-50%);
   width: 260px;
   max-height: min(420px, calc(100vh - 60px));
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: visible;
   border: 1px solid var(--border-2);
   background: var(--bg-0);
   box-shadow: var(--shadow-menu);
@@ -1162,33 +1163,58 @@ body.platform-linux .appbar { padding-left: 0; padding-right: 140px; }
 }
 
 .appbar-submenu {
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
+  position: relative;
   border-top: 1px solid var(--border-1);
+  outline: none;
 }
 
 .appbar-submenu-label {
   display: flex;
   align-items: center;
-  padding: 8px 10px;
-  border-right: 1px solid var(--border-1);
+  justify-content: space-between;
+  padding: 10px 12px;
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-3);
+  font-size: 11px;
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
 }
 
-.appbar-submenu-options {
-  min-width: 0;
+.appbar-submenu:hover > .appbar-submenu-label,
+.appbar-submenu:focus-within > .appbar-submenu-label {
+  background: var(--bg-2);
+  color: var(--text-1);
+}
+
+.appbar-submenu-chevron {
+  color: var(--text-4);
+  font-size: 14px;
+  margin-left: 8px;
+}
+
+.appbar-submenu-popup {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: -1px;
+  min-width: 260px;
+  border: 1px solid var(--border-2);
+  background: var(--bg-0);
+  box-shadow: var(--shadow-menu);
   display: none;
+  z-index: 90;
 }
 
-.appbar-submenu:hover .appbar-submenu-options,
-.appbar-submenu:focus-within .appbar-submenu-options {
+.appbar-submenu:hover > .appbar-submenu-popup,
+.appbar-submenu:focus-within > .appbar-submenu-popup {
   display: block;
 }
 
-.appbar-submenu-options .appbar-menu-item {
-  min-height: 34px;
+.appbar-submenu-popup .appbar-menu-item {
+  min-height: 36px;
+}
+
+.appbar-submenu-options {
+  display: none;
 }
 
 .appbar-title .status-pill {

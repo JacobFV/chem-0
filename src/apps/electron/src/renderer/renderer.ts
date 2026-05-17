@@ -391,16 +391,26 @@ function renderPickerMenus(): void {
   }
   const newWorld = document.createElement("div");
   newWorld.className = "appbar-submenu";
+  newWorld.tabIndex = 0;
   const label = document.createElement("div");
   label.className = "appbar-submenu-label";
-  label.textContent = "+ New World";
-  const options = document.createElement("div");
-  options.className = "appbar-submenu-options";
-  options.append(
+  const labelText = document.createElement("span");
+  labelText.textContent = "+ New World";
+  const chevron = document.createElement("span");
+  chevron.className = "appbar-submenu-chevron";
+  chevron.textContent = "›";
+  label.append(labelText, chevron);
+  const popup = document.createElement("div");
+  popup.className = "appbar-submenu-popup";
+  popup.append(
     menuButton("Physical World", "hardware bench", false, () => openWorldModal("create", "physical")),
-    menuButton("Virtual World", "simulation", false, () => openWorldModal("create", "virtual"))
+    menuButton("Virtual: Empty", "blank simulation", false, () => openWorldModal("create", "virtual", undefined, "empty")),
+    menuButton("Virtual: Bench setup", "arm · bench · tray", false, () => openWorldModal("create", "virtual", undefined, "bench")),
+    menuButton("Virtual: Glassware kit", "rack · vials · beaker · pipette", false, () => openWorldModal("create", "virtual", undefined, "glassware")),
+    menuButton("Virtual: Titration station", "ring stand · burette · flask · pH meter", false, () => openWorldModal("create", "virtual", undefined, "titration")),
+    menuButton("Virtual: Weighing station", "balance · reagent · weigh boat · spatula", false, () => openWorldModal("create", "virtual", undefined, "weighing"))
   );
-  newWorld.append(label, options);
+  newWorld.append(label, popup);
   worldPickerMenu.append(newWorld);
   setActiveWorldLabel();
 }
@@ -1040,19 +1050,102 @@ async function createVirtualArm(): Promise<void> {
   void refreshRobots();
 }
 
-function openWorldModal(mode: "create" | "edit", type: "physical" | "virtual", world?: JsonObject): void {
+type VirtualTemplate = "empty" | "bench" | "glassware" | "titration" | "weighing";
+
+const VIRTUAL_TEMPLATE_DEFAULT_NAMES: Record<VirtualTemplate, string> = {
+  empty: "Virtual world",
+  bench: "Bench setup",
+  glassware: "Glassware kit",
+  titration: "Titration station",
+  weighing: "Weighing station"
+};
+
+let worldModalTemplate: VirtualTemplate = "empty";
+
+function openWorldModal(mode: "create" | "edit", type: "physical" | "virtual", world?: JsonObject, template: VirtualTemplate = "empty"): void {
   worldModalMode = mode;
   worldModalType = type;
+  worldModalTemplate = type === "virtual" ? template : "empty";
   worldModalWorldId = world ? String(world.id ?? "") : "";
   worldModalTitle.textContent = mode === "edit" ? "Edit world" : "New world";
-  worldModalKind.textContent = type;
+  const kindLabel = type === "virtual" && mode === "create" && template !== "empty"
+    ? `virtual · ${VIRTUAL_TEMPLATE_DEFAULT_NAMES[template]}`
+    : type;
+  worldModalKind.textContent = kindLabel;
   worldModalCreate.textContent = mode === "edit" ? "Save" : "Create";
-  worldModalName.value = String(world?.name ?? (type === "virtual" ? "Virtual world" : "Physical world"));
+  const defaultName = type === "virtual"
+    ? VIRTUAL_TEMPLATE_DEFAULT_NAMES[worldModalTemplate]
+    : "Physical world";
+  worldModalName.value = String(world?.name ?? defaultName);
   const metadata = (world?.metadata ?? {}) as JsonObject;
   worldModalNotes.value = typeof metadata.notes === "string" ? metadata.notes : "";
   worldModal.hidden = false;
   worldModalName.focus();
   worldModalName.select();
+}
+
+type TemplateEntity =
+  | { tool: "arm"; name: string; pose: JsonObject; spec?: JsonObject; make_default?: boolean }
+  | { tool: "camera"; name: string; pose: JsonObject; spec?: JsonObject }
+  | { tool: "light"; name: string; pose: JsonObject; spec?: JsonObject }
+  | { tool: "rigid"; name: string; pose: JsonObject; spec: JsonObject };
+
+function templateEntities(template: VirtualTemplate): TemplateEntity[] {
+  if (template === "empty") return [];
+  const base: TemplateEntity[] = [
+    { tool: "arm", name: "SO-101 arm", pose: { x: 0, y: 0, z: 0 }, make_default: true },
+    { tool: "light", name: "Key light", pose: { x: 0.1, y: -0.3, z: 0.7 }, spec: { type: "area", intensity: 1.2, color: "#ffffff" } },
+    { tool: "camera", name: "Bench camera", pose: { x: 0.25, y: -0.25, z: 0.42, yaw: -45 }, spec: { resolution: "1280x720", fov_degrees: 60 } }
+  ];
+  if (template === "bench") {
+    return [
+      ...base,
+      { tool: "rigid", name: "Bench", pose: { x: 0.2, y: 0, z: 0.01 }, spec: { mass_kg: 0, collision_shape: "box", dimensions_m: [0.6, 0.4, 0.02], asset: "bench" } },
+      { tool: "rigid", name: "Tray", pose: { x: 0.22, y: 0, z: 0.035 }, spec: { mass_kg: 0.35, collision_shape: "box", dimensions_m: [0.3, 0.2, 0.025], asset: "tray" } }
+    ];
+  }
+  if (template === "glassware") {
+    return [
+      ...base,
+      { tool: "rigid", name: "Vial rack", pose: { x: 0.2, y: 0.05, z: 0.02 }, spec: { mass_kg: 0.2, collision_shape: "box", dimensions_m: [0.12, 0.09, 0.035], asset: "vial_rack" } },
+      { tool: "rigid", name: "Vial 4mL #1", pose: { x: 0.17, y: 0.05, z: 0.04 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
+      { tool: "rigid", name: "Vial 4mL #2", pose: { x: 0.2, y: 0.05, z: 0.04 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
+      { tool: "rigid", name: "Vial 4mL #3", pose: { x: 0.23, y: 0.05, z: 0.04 }, spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } },
+      { tool: "rigid", name: "Beaker 50mL", pose: { x: 0.18, y: -0.08, z: 0.027 }, spec: { mass_kg: 0.04, collision_shape: "cylinder", radius_m: 0.021, height_m: 0.055, asset: "beaker_50" } },
+      { tool: "rigid", name: "Pipette", pose: { x: 0.28, y: 0.0, z: 0.11 }, spec: { mass_kg: 0.02, collision_shape: "cylinder", radius_m: 0.005, height_m: 0.22, asset: "pipette" } }
+    ];
+  }
+  if (template === "titration") {
+    return [
+      ...base,
+      { tool: "rigid", name: "Ring stand", pose: { x: 0.25, y: 0.12, z: 0.3 }, spec: { mass_kg: 1.2, collision_shape: "box", dimensions_m: [0.16, 0.1, 0.6], asset: "ring_stand" } },
+      { tool: "rigid", name: "Burette 50mL", pose: { x: 0.2, y: 0.1, z: 0.32 }, spec: { mass_kg: 0.18, collision_shape: "cylinder", radius_m: 0.012, height_m: 0.55, asset: "burette" } },
+      { tool: "rigid", name: "Erlenmeyer 250mL", pose: { x: 0.2, y: 0.1, z: 0.065 }, spec: { mass_kg: 0.13, collision_shape: "cylinder", radius_m: 0.04, height_m: 0.13, asset: "erlenmeyer_250" } },
+      { tool: "rigid", name: "Reagent bottle", pose: { x: 0.1, y: -0.1, z: 0.065 }, spec: { mass_kg: 0.25, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.13, asset: "reagent_bottle" } },
+      { tool: "rigid", name: "pH meter", pose: { x: 0.08, y: 0.15, z: 0.03 }, spec: { mass_kg: 0.6, collision_shape: "box", dimensions_m: [0.12, 0.18, 0.06], asset: "ph_meter" } }
+    ];
+  }
+  return [
+    ...base,
+    { tool: "rigid", name: "Analytical balance", pose: { x: 0.22, y: 0.05, z: 0.06 }, spec: { mass_kg: 5, collision_shape: "box", dimensions_m: [0.22, 0.32, 0.12], asset: "balance" } },
+    { tool: "rigid", name: "Reagent bottle", pose: { x: 0.1, y: -0.08, z: 0.065 }, spec: { mass_kg: 0.25, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.13, asset: "reagent_bottle" } },
+    { tool: "rigid", name: "Weigh boat", pose: { x: 0.22, y: 0.05, z: 0.13 }, spec: { mass_kg: 0.005, collision_shape: "box", dimensions_m: [0.05, 0.05, 0.005], asset: "weigh_boat" } },
+    { tool: "rigid", name: "Spatula", pose: { x: 0.15, y: 0.05, z: 0.03 }, spec: { mass_kg: 0.01, collision_shape: "box", dimensions_m: [0.12, 0.01, 0.005], asset: "spatula" } }
+  ];
+}
+
+async function instantiateTemplate(worldId: string, template: VirtualTemplate): Promise<void> {
+  for (const entity of templateEntities(template)) {
+    if (entity.tool === "arm") {
+      await window.chem0.callTool("create_virtual_arm", { world_id: worldId, name: entity.name, pose: entity.pose, make_default: entity.make_default === true, spec: entity.spec ?? {} });
+    } else if (entity.tool === "camera") {
+      await window.chem0.callTool("create_virtual_camera", { world_id: worldId, name: entity.name, pose: entity.pose, spec: entity.spec ?? {} });
+    } else if (entity.tool === "light") {
+      await window.chem0.callTool("create_virtual_light", { world_id: worldId, name: entity.name, pose: entity.pose, spec: entity.spec ?? {} });
+    } else {
+      await window.chem0.callTool("create_virtual_rigid_body", { world_id: worldId, name: entity.name, pose: entity.pose, spec: entity.spec });
+    }
+  }
 }
 
 function closeWorldModal(): void {
@@ -1065,10 +1158,16 @@ async function submitWorldModal(): Promise<void> {
   const metadata: JsonObject = {};
   if (worldModalNotes.value.trim()) metadata.notes = worldModalNotes.value.trim();
   if (worldModalMode === "create") {
-    const result = await window.chem0.callTool("create_world", { name, type: worldModalType, metadata });
+    const templateMeta = worldModalType === "virtual" && worldModalTemplate !== "empty"
+      ? { ...metadata, template: worldModalTemplate }
+      : metadata;
+    const result = await window.chem0.callTool("create_world", { name, type: worldModalType, metadata: templateMeta });
     const world = result.world as JsonObject | undefined;
     if (world?.id) selectedWorldId = String(world.id);
     show(result);
+    if (worldModalType === "virtual" && worldModalTemplate !== "empty" && world?.id) {
+      await instantiateTemplate(String(world.id), worldModalTemplate);
+    }
   } else {
     const result = await window.chem0.callTool("update_world", { world_id: worldModalWorldId, name, metadata });
     show(result);
@@ -1307,8 +1406,12 @@ newWorldMenuBtn.addEventListener("click", () => {
 for (const btn of newWorldOptions.querySelectorAll<HTMLButtonElement>("button[data-world-type]")) {
   btn.addEventListener("click", () => {
     const type = btn.dataset.worldType === "virtual" ? "virtual" : "physical";
+    const rawTemplate = btn.dataset.worldTemplate ?? "empty";
+    const template: VirtualTemplate = (["empty", "bench", "glassware", "titration", "weighing"] as const).includes(rawTemplate as VirtualTemplate)
+      ? (rawTemplate as VirtualTemplate)
+      : "empty";
     newWorldOptions.hidden = true;
-    openWorldModal("create", type);
+    openWorldModal("create", type, undefined, template);
   });
 }
 document.addEventListener("click", (event) => {

@@ -29,7 +29,6 @@ contextBridge.exposeInMainWorld("chem0", {
     return () => ipcRenderer.removeListener("chem0:workbench-set-tab", listener);
   },
   platform: process.platform,
-  homedir: require("os").homedir(),
   getSettings: () => ipcRenderer.invoke("chem0:get-settings"),
   setSetting: (key: string, value: unknown) => ipcRenderer.invoke("chem0:set-setting", key, value),
   onSettingsChanged: (callback: (settings: JsonObject) => void) => {

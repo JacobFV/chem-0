@@ -139,6 +139,9 @@ scene.add(fillLight);
 
 const FLOOR_Z = 0;
 const GRAVITY_M_PER_FRAME = 0.006;
+const PHYSICS_WATCHDOG_INTERVAL_MS = 1000;
+const PHYSICS_PERSIST_SETTLE_MS = 250;
+const PHYSICS_PERSIST_INTERVAL_MS = 600;
 const CONTACT_EPSILON_M = 0.0005;
 const FLOOR_SIZE_M = 1.6;
 const floorMaterial = new THREE.MeshStandardMaterial({ color: PALETTE[currentTheme()].floor, roughness: 0.92, metalness: 0.02 });
@@ -434,7 +437,12 @@ function setGroupPose(group, entity) {
 
 function applyMaterial(group, material) {
   group.traverse((node) => {
-    if (node.isMesh && !node.userData.isCameraHitbox) node.material = material;
+    if (!node.isMesh || node.userData.isCameraHitbox) return;
+    if (material === null) {
+      if (node.userData.originalMaterial) node.material = node.userData.originalMaterial;
+    } else {
+      node.material = material;
+    }
   });
 }
 
@@ -519,23 +527,741 @@ function makeLight() {
   return group;
 }
 
+const assetMaterials = {
+  glass: new THREE.MeshStandardMaterial({ color: 0xe6f3ff, roughness: 0.08, metalness: 0.0, transparent: true, opacity: 0.32, side: THREE.DoubleSide }),
+  glass_amber: new THREE.MeshStandardMaterial({ color: 0xa86f24, roughness: 0.18, metalness: 0.0, transparent: true, opacity: 0.55, side: THREE.DoubleSide }),
+  cap_white: new THREE.MeshStandardMaterial({ color: 0xeae6d6, roughness: 0.55 }),
+  cap_blue: new THREE.MeshStandardMaterial({ color: 0x2f5b91, roughness: 0.5 }),
+  cap_red: new THREE.MeshStandardMaterial({ color: 0x8a2a1f, roughness: 0.55 }),
+  cap_green: new THREE.MeshStandardMaterial({ color: 0x2c6f3a, roughness: 0.55 }),
+  cap_black: new THREE.MeshStandardMaterial({ color: 0x1d1d1f, roughness: 0.6 }),
+  plastic_white: new THREE.MeshStandardMaterial({ color: 0xe8e6df, roughness: 0.6 }),
+  plastic_dark: new THREE.MeshStandardMaterial({ color: 0x26272a, roughness: 0.6 }),
+  panel: new THREE.MeshStandardMaterial({ color: 0xcfcec8, roughness: 0.55, metalness: 0.25 }),
+  panel_dark: new THREE.MeshStandardMaterial({ color: 0x3d3f44, roughness: 0.55, metalness: 0.35 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0xb6b8bd, roughness: 0.32, metalness: 0.85 }),
+  steel_dark: new THREE.MeshStandardMaterial({ color: 0x6b6e74, roughness: 0.4, metalness: 0.8 }),
+  ceramic: new THREE.MeshStandardMaterial({ color: 0xf2efe5, roughness: 0.65 }),
+  rubber: new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 0.9 }),
+  wood: new THREE.MeshStandardMaterial({ color: 0xa3865a, roughness: 0.78 }),
+  screen: new THREE.MeshStandardMaterial({ color: 0x12382a, emissive: 0x0d3322, emissiveIntensity: 0.9, roughness: 0.35 }),
+  led_green: new THREE.MeshStandardMaterial({ color: 0x46f08e, emissive: 0x1eaa4c, emissiveIntensity: 1.1, roughness: 0.3 }),
+  led_red: new THREE.MeshStandardMaterial({ color: 0xff6a4d, emissive: 0xaa2010, emissiveIntensity: 1.0, roughness: 0.3 }),
+  liquid_blue: new THREE.MeshStandardMaterial({ color: 0x3e8fc4, roughness: 0.25, transparent: true, opacity: 0.78 }),
+  liquid_yellow: new THREE.MeshStandardMaterial({ color: 0xe4c64a, roughness: 0.28, transparent: true, opacity: 0.78 }),
+  brass: new THREE.MeshStandardMaterial({ color: 0xb89651, roughness: 0.4, metalness: 0.75 }),
+  paper_white: new THREE.MeshStandardMaterial({ color: 0xfafaf6, roughness: 0.92 })
+};
+
+function assetMeshWrap(mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+function vcyl(rTop, rBottom, h, material, segments = 24, openEnded = false) {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBottom, h, segments, 1, openEnded), material);
+  mesh.rotation.x = Math.PI / 2;
+  return assetMeshWrap(mesh);
+}
+
+function hcyl(rTop, rBottom, length, material, axis = "x", segments = 18) {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBottom, length, segments), material);
+  if (axis === "x") mesh.rotation.z = Math.PI / 2;
+  else if (axis === "y") mesh.rotation.set(0, 0, 0);
+  return assetMeshWrap(mesh);
+}
+
+function disk(radius, thickness, material, segments = 24) {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, thickness, segments), material);
+  mesh.rotation.x = Math.PI / 2;
+  return assetMeshWrap(mesh);
+}
+
+function bx(w, d, h, material) {
+  return assetMeshWrap(new THREE.Mesh(new THREE.BoxGeometry(w, d, h), material));
+}
+
+function sph(radius, material, ws = 18, hs = 14) {
+  return assetMeshWrap(new THREE.Mesh(new THREE.SphereGeometry(radius, ws, hs), material));
+}
+
+function hemi(radius, material, ws = 18, hs = 10) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, ws, hs, 0, Math.PI * 2, 0, Math.PI / 2), material);
+  mesh.rotation.x = Math.PI;
+  return assetMeshWrap(mesh);
+}
+
+function torus(radius, tube, material, radial = 8, tubular = 24) {
+  const mesh = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, radial, tubular), material);
+  return assetMeshWrap(mesh);
+}
+
+function placeAt(mesh, x, y, z) {
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
+function buildVialSmall(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.006;
+  const totalH = Number(spec.height_m) || 0.045;
+  const coneH = totalH * 0.27;
+  const bodyH = totalH * 0.58;
+  const capH = totalH * 0.15;
+  const cone = vcyl(r, r * 0.18, coneH, assetMaterials.glass, 16);
+  placeAt(cone, 0, 0, coneH / 2);
+  const body = vcyl(r, r, bodyH, assetMaterials.glass, 18, true);
+  placeAt(body, 0, 0, coneH + bodyH / 2);
+  const cap = vcyl(r * 1.02, r * 1.02, capH, assetMaterials.cap_white, 18);
+  placeAt(cap, 0, 0, coneH + bodyH + capH / 2);
+  const hinge = bx(r * 0.5, r * 0.6, capH * 0.4, assetMaterials.cap_white);
+  placeAt(hinge, 0, r * 0.9, coneH + bodyH + capH * 0.5);
+  g.add(cone, body, cap, hinge);
+  return g;
+}
+
+function buildVialScrewCap(spec, capMaterial) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.009;
+  const totalH = Number(spec.height_m) || 0.05;
+  const capH = totalH * 0.24;
+  const bodyH = totalH - capH;
+  const liquidH = bodyH * 0.55;
+  const body = vcyl(r, r, bodyH, assetMaterials.glass, 22);
+  placeAt(body, 0, 0, bodyH / 2);
+  const liquid = vcyl(r * 0.94, r * 0.94, liquidH, assetMaterials.liquid_blue, 22);
+  placeAt(liquid, 0, 0, liquidH / 2);
+  const cap = vcyl(r * 1.08, r * 1.08, capH, capMaterial, 22);
+  placeAt(cap, 0, 0, bodyH + capH / 2);
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2;
+    const rib = bx(r * 0.06, r * 0.06, capH * 0.85, capMaterial);
+    placeAt(rib, Math.cos(angle) * r * 1.06, Math.sin(angle) * r * 1.06, bodyH + capH / 2);
+    g.add(rib);
+  }
+  g.add(body, liquid, cap);
+  return g;
+}
+
+function buildTestTube(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.0075;
+  const totalH = Number(spec.height_m) || 0.1;
+  const bodyH = totalH - r;
+  const rimH = totalH * 0.02;
+  const body = vcyl(r, r, bodyH, assetMaterials.glass, 22, true);
+  placeAt(body, 0, 0, r + bodyH / 2);
+  const rim = torus(r, rimH, assetMaterials.glass, 8, 22);
+  placeAt(rim, 0, 0, r + bodyH);
+  const bottom = sph(r, assetMaterials.glass, 22, 12);
+  placeAt(bottom, 0, 0, r);
+  bottom.scale.z = 1.0;
+  const liquidH = bodyH * 0.35;
+  const liquid = vcyl(r * 0.93, r * 0.93, liquidH, assetMaterials.liquid_blue, 22);
+  placeAt(liquid, 0, 0, r + liquidH / 2);
+  g.add(body, rim, bottom, liquid);
+  return g;
+}
+
+function buildBeaker(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.021;
+  const h = Number(spec.height_m) || 0.055;
+  const wall = r * 0.04;
+  const outer = vcyl(r, r, h, assetMaterials.glass, 28, true);
+  placeAt(outer, 0, 0, h / 2);
+  const inner = vcyl(r - wall, r - wall, h - wall, assetMaterials.glass, 28, true);
+  placeAt(inner, 0, 0, h / 2 + wall * 0.5);
+  const base = disk(r, wall * 1.2, assetMaterials.glass, 28);
+  placeAt(base, 0, 0, wall * 0.6);
+  const rim = torus(r, wall * 0.7, assetMaterials.glass, 6, 28);
+  placeAt(rim, 0, 0, h);
+  const liquidH = h * 0.45;
+  const liquid = vcyl(r - wall * 1.4, r - wall * 1.4, liquidH, assetMaterials.liquid_blue, 28);
+  placeAt(liquid, 0, 0, wall + liquidH / 2);
+  const spout = bx(r * 0.18, r * 0.5, h * 0.08, assetMaterials.glass);
+  placeAt(spout, r * 0.95, 0, h - h * 0.05);
+  spout.rotation.z = Math.PI / 8;
+  g.add(outer, inner, base, rim, liquid, spout);
+  return g;
+}
+
+function buildErlenmeyer(spec) {
+  const g = new THREE.Group();
+  const rBody = Number(spec.radius_m) || 0.04;
+  const h = Number(spec.height_m) || 0.13;
+  const neckH = h * 0.22;
+  const neckR = rBody * 0.32;
+  const coneH = h - neckH;
+  const wall = rBody * 0.025;
+  const cone = vcyl(neckR, rBody, coneH, assetMaterials.glass, 32, true);
+  placeAt(cone, 0, 0, coneH / 2);
+  const base = disk(rBody, wall * 1.5, assetMaterials.glass, 32);
+  placeAt(base, 0, 0, wall * 0.75);
+  const neck = vcyl(neckR, neckR, neckH, assetMaterials.glass, 24, true);
+  placeAt(neck, 0, 0, coneH + neckH / 2);
+  const rim = torus(neckR, wall * 0.9, assetMaterials.glass, 6, 24);
+  placeAt(rim, 0, 0, coneH + neckH);
+  const liquidH = coneH * 0.45;
+  const liquid = vcyl(rBody * 0.55, rBody * 0.92, liquidH, assetMaterials.liquid_yellow, 32);
+  placeAt(liquid, 0, 0, wall + liquidH / 2);
+  g.add(cone, base, neck, rim, liquid);
+  return g;
+}
+
+function buildRoundFlask(spec) {
+  const g = new THREE.Group();
+  const rBody = Number(spec.radius_m) || 0.04;
+  const neckR = rBody * 0.32;
+  const neckH = rBody * 1.3;
+  const sphere = sph(rBody, assetMaterials.glass, 28, 20);
+  placeAt(sphere, 0, 0, rBody);
+  const neck = vcyl(neckR, neckR, neckH, assetMaterials.glass, 24, true);
+  placeAt(neck, 0, 0, rBody * 2 + neckH / 2 - rBody * 0.25);
+  const rim = torus(neckR, rBody * 0.025, assetMaterials.glass, 6, 24);
+  placeAt(rim, 0, 0, rBody * 2 + neckH - rBody * 0.25);
+  const liquid = sph(rBody * 0.78, assetMaterials.liquid_yellow, 22, 14);
+  placeAt(liquid, 0, 0, rBody * 0.85);
+  g.add(sphere, neck, rim, liquid);
+  return g;
+}
+
+function buildGraduatedCylinder(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.014;
+  const h = Number(spec.height_m) || 0.215;
+  const baseR = r * 1.85;
+  const baseH = h * 0.04;
+  const tubeH = h - baseH;
+  const wall = r * 0.05;
+  const base = vcyl(baseR, baseR * 1.05, baseH, assetMaterials.glass, 28);
+  placeAt(base, 0, 0, baseH / 2);
+  const tube = vcyl(r, r, tubeH, assetMaterials.glass, 28, true);
+  placeAt(tube, 0, 0, baseH + tubeH / 2);
+  const rim = torus(r, wall, assetMaterials.glass, 6, 26);
+  placeAt(rim, 0, 0, baseH + tubeH);
+  const spout = bx(r * 0.4, r * 0.7, h * 0.025, assetMaterials.glass);
+  placeAt(spout, r * 0.95, 0, baseH + tubeH - h * 0.012);
+  spout.rotation.z = Math.PI / 6;
+  for (let i = 1; i <= 9; i++) {
+    const tick = bx(r * 0.55, r * 0.02, h * 0.003, assetMaterials.paper_white);
+    placeAt(tick, r * 0.92, 0, baseH + tubeH * (i / 10));
+    g.add(tick);
+  }
+  const liquidH = tubeH * 0.55;
+  const liquid = vcyl(r * 0.92, r * 0.92, liquidH, assetMaterials.liquid_blue, 26);
+  placeAt(liquid, 0, 0, baseH + liquidH / 2);
+  g.add(base, tube, rim, spout, liquid);
+  return g;
+}
+
+function buildPetri(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.045;
+  const h = Number(spec.height_m) || 0.015;
+  const dishH = h * 0.55;
+  const lidH = h * 0.55;
+  const wall = r * 0.025;
+  const dish = vcyl(r, r, dishH, assetMaterials.glass, 32, true);
+  placeAt(dish, 0, 0, dishH / 2);
+  const dishBase = disk(r, wall, assetMaterials.glass, 32);
+  placeAt(dishBase, 0, 0, wall / 2);
+  const lid = vcyl(r * 1.04, r * 1.04, lidH, assetMaterials.glass, 32, true);
+  placeAt(lid, 0, 0, dishH + lidH / 2);
+  const lidTop = disk(r * 1.04, wall, assetMaterials.glass, 32);
+  placeAt(lidTop, 0, 0, dishH + lidH - wall / 2);
+  const medium = disk(r * 0.94, dishH * 0.5, assetMaterials.liquid_yellow, 32);
+  placeAt(medium, 0, 0, wall + dishH * 0.25);
+  g.add(dish, dishBase, lid, lidTop, medium);
+  return g;
+}
+
+function buildPipette(spec) {
+  const g = new THREE.Group();
+  const rTip = Number(spec.radius_m) || 0.005;
+  const totalH = Number(spec.height_m) || 0.22;
+  const bulbR = rTip * 2.6;
+  const tipH = totalH * 0.55;
+  const shaftH = totalH * 0.32;
+  const tip = vcyl(rTip * 0.15, rTip, tipH, assetMaterials.glass, 18);
+  placeAt(tip, 0, 0, tipH / 2);
+  const shaft = vcyl(rTip * 1.05, rTip * 1.05, shaftH, assetMaterials.glass, 18, true);
+  placeAt(shaft, 0, 0, tipH + shaftH / 2);
+  const bulb = sph(bulbR, assetMaterials.rubber, 18, 12);
+  placeAt(bulb, 0, 0, tipH + shaftH + bulbR * 0.85);
+  bulb.scale.set(1, 1, 1.25);
+  g.add(tip, shaft, bulb);
+  return g;
+}
+
+function buildBurette(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.012;
+  const totalH = Number(spec.height_m) || 0.55;
+  const tipLen = totalH * 0.07;
+  const stopcockH = totalH * 0.06;
+  const tubeH = totalH - tipLen - stopcockH;
+  const wall = r * 0.08;
+  const tip = vcyl(r * 0.18, r * 0.45, tipLen, assetMaterials.glass, 18);
+  placeAt(tip, 0, 0, tipLen / 2);
+  const stopcockBody = vcyl(r * 1.15, r * 1.15, stopcockH, assetMaterials.glass, 22);
+  placeAt(stopcockBody, 0, 0, tipLen + stopcockH / 2);
+  const valveAxle = hcyl(r * 0.32, r * 0.32, r * 3.2, assetMaterials.brass, "x", 12);
+  placeAt(valveAxle, 0, 0, tipLen + stopcockH / 2);
+  const knobL = bx(r * 0.45, r * 1.2, r * 0.45, assetMaterials.cap_white);
+  placeAt(knobL, -r * 1.7, 0, tipLen + stopcockH / 2);
+  const knobR = bx(r * 0.45, r * 1.2, r * 0.45, assetMaterials.cap_white);
+  placeAt(knobR, r * 1.7, 0, tipLen + stopcockH / 2);
+  const tube = vcyl(r, r, tubeH, assetMaterials.glass, 24, true);
+  placeAt(tube, 0, 0, tipLen + stopcockH + tubeH / 2);
+  const rim = torus(r * 1.1, wall, assetMaterials.glass, 6, 22);
+  placeAt(rim, 0, 0, totalH);
+  for (let i = 1; i < 10; i++) {
+    const tick = bx(r * 0.45, r * 0.015, totalH * 0.004, assetMaterials.paper_white);
+    placeAt(tick, r * 0.92, 0, tipLen + stopcockH + tubeH * (i / 10));
+    g.add(tick);
+  }
+  const liquidH = tubeH * 0.7;
+  const liquid = vcyl(r * 0.92, r * 0.92, liquidH, assetMaterials.liquid_blue, 22);
+  placeAt(liquid, 0, 0, tipLen + stopcockH + liquidH / 2);
+  g.add(tip, stopcockBody, valveAxle, knobL, knobR, tube, rim, liquid);
+  return g;
+}
+
+function buildReagentBottle(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.035;
+  const h = Number(spec.height_m) || 0.13;
+  const shoulderH = h * 0.14;
+  const neckH = h * 0.09;
+  const capH = h * 0.11;
+  const bodyH = h - shoulderH - neckH - capH;
+  const neckR = r * 0.42;
+  const body = vcyl(r, r, bodyH, assetMaterials.glass_amber, 28);
+  placeAt(body, 0, 0, bodyH / 2);
+  const shoulder = vcyl(neckR, r, shoulderH, assetMaterials.glass_amber, 28);
+  placeAt(shoulder, 0, 0, bodyH + shoulderH / 2);
+  const neck = vcyl(neckR, neckR, neckH, assetMaterials.glass_amber, 24);
+  placeAt(neck, 0, 0, bodyH + shoulderH + neckH / 2);
+  const cap = vcyl(neckR * 1.18, neckR * 1.18, capH, assetMaterials.cap_red, 24);
+  placeAt(cap, 0, 0, bodyH + shoulderH + neckH + capH / 2);
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const rib = bx(r * 0.04, r * 0.04, capH * 0.85, assetMaterials.cap_red);
+    placeAt(rib, Math.cos(a) * neckR * 1.18, Math.sin(a) * neckR * 1.18, bodyH + shoulderH + neckH + capH / 2);
+    g.add(rib);
+  }
+  const label = bx(r * 1.55, r * 0.04, bodyH * 0.55, assetMaterials.paper_white);
+  placeAt(label, 0, r * 0.99, bodyH * 0.45);
+  label.rotation.x = 0;
+  g.add(body, shoulder, neck, cap, label);
+  return g;
+}
+
+function buildCentrifugeTube(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.0085;
+  const totalH = Number(spec.height_m) || 0.118;
+  const coneH = r * 1.6;
+  const capH = totalH * 0.1;
+  const bodyH = totalH - coneH - capH;
+  const cone = vcyl(r, r * 0.05, coneH, assetMaterials.glass, 20);
+  placeAt(cone, 0, 0, coneH / 2);
+  const body = vcyl(r, r, bodyH, assetMaterials.glass, 24);
+  placeAt(body, 0, 0, coneH + bodyH / 2);
+  const cap = vcyl(r * 1.12, r * 1.05, capH, assetMaterials.cap_blue, 22);
+  placeAt(cap, 0, 0, coneH + bodyH + capH / 2);
+  const flange = vcyl(r * 1.35, r * 1.35, capH * 0.35, assetMaterials.cap_blue, 22);
+  placeAt(flange, 0, 0, coneH + bodyH + capH * 0.18);
+  for (let i = 1; i < 8; i++) {
+    const tick = bx(r * 0.6, r * 0.02, bodyH * 0.006, assetMaterials.paper_white);
+    placeAt(tick, r * 0.9, 0, coneH + bodyH * (i / 8));
+    g.add(tick);
+  }
+  g.add(cone, body, cap, flange);
+  return g;
+}
+
+function buildVialRack(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.12, 0.09, 0.035];
+  const [w, d, h] = [dims[0] || 0.12, dims[1] || 0.09, dims[2] || 0.035];
+  const base = bx(w, d, h * 0.4, assetMaterials.plastic_white);
+  placeAt(base, 0, 0, h * 0.2);
+  const top = bx(w, d, h * 0.6, assetMaterials.plastic_white);
+  placeAt(top, 0, 0, h * 0.7);
+  g.add(base, top);
+  const cols = 4;
+  const rows = 3;
+  const cellW = w / (cols + 1);
+  const cellD = d / (rows + 1);
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const x = -w / 2 + cellW * (c + 1);
+      const y = -d / 2 + cellD * (r + 1);
+      const hole = vcyl(cellW * 0.32, cellW * 0.32, h * 0.62, assetMaterials.panel_dark, 14);
+      placeAt(hole, x, y, h * 0.7);
+      g.add(hole);
+    }
+  }
+  return g;
+}
+
+function buildTubeRack(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.18, 0.06, 0.05];
+  const [w, d, h] = [dims[0] || 0.18, dims[1] || 0.06, dims[2] || 0.05];
+  const base = bx(w, d, h * 0.3, assetMaterials.plastic_white);
+  placeAt(base, 0, 0, h * 0.15);
+  const top = bx(w, d * 0.95, h * 0.18, assetMaterials.plastic_white);
+  placeAt(top, 0, 0, h * 0.4);
+  const slots = 6;
+  const cellW = w / (slots + 1);
+  for (let i = 0; i < slots; i++) {
+    const x = -w / 2 + cellW * (i + 1);
+    const hole = vcyl(cellW * 0.36, cellW * 0.36, h * 0.16, assetMaterials.panel_dark, 14);
+    placeAt(hole, x, 0, h * 0.4);
+    g.add(hole);
+    const post = bx(cellW * 0.18, d * 1.05, h * 1.1, assetMaterials.plastic_white);
+    placeAt(post, x, 0, h * 0.55);
+    g.add(post);
+  }
+  g.add(base, top);
+  return g;
+}
+
+function buildTray(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.3, 0.2, 0.025];
+  const [w, d, h] = [dims[0] || 0.3, dims[1] || 0.2, dims[2] || 0.025];
+  const wall = h * 0.18;
+  const base = bx(w, d, h * 0.35, assetMaterials.plastic_white);
+  placeAt(base, 0, 0, h * 0.175);
+  const lipFront = bx(w, wall, h * 0.65, assetMaterials.plastic_white);
+  placeAt(lipFront, 0, -d / 2 + wall / 2, h * 0.5);
+  const lipBack = bx(w, wall, h * 0.65, assetMaterials.plastic_white);
+  placeAt(lipBack, 0, d / 2 - wall / 2, h * 0.5);
+  const lipLeft = bx(wall, d - wall * 2, h * 0.65, assetMaterials.plastic_white);
+  placeAt(lipLeft, -w / 2 + wall / 2, 0, h * 0.5);
+  const lipRight = bx(wall, d - wall * 2, h * 0.65, assetMaterials.plastic_white);
+  placeAt(lipRight, w / 2 - wall / 2, 0, h * 0.5);
+  g.add(base, lipFront, lipBack, lipLeft, lipRight);
+  return g;
+}
+
+function buildWellPlate(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.127, 0.085, 0.015];
+  const [w, d, h] = [dims[0] || 0.127, dims[1] || 0.085, dims[2] || 0.015];
+  const base = bx(w, d, h, assetMaterials.plastic_white);
+  placeAt(base, 0, 0, h / 2);
+  g.add(base);
+  const cols = 12;
+  const rows = 8;
+  const cellW = w / (cols + 1);
+  const cellD = d / (rows + 1);
+  const wellR = Math.min(cellW, cellD) * 0.36;
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const x = -w / 2 + cellW * (c + 1);
+      const y = -d / 2 + cellD * (r + 1);
+      const well = vcyl(wellR, wellR, h * 0.75, assetMaterials.panel_dark, 10);
+      placeAt(well, x, y, h * 0.65);
+      g.add(well);
+    }
+  }
+  return g;
+}
+
+function buildHotPlate(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.18, 0.18, 0.1];
+  const [w, d, h] = [dims[0] || 0.18, dims[1] || 0.18, dims[2] || 0.1];
+  const body = bx(w, d, h * 0.65, assetMaterials.panel);
+  placeAt(body, 0, 0, h * 0.325);
+  const plate = vcyl(Math.min(w, d) * 0.42, Math.min(w, d) * 0.42, h * 0.04, assetMaterials.ceramic, 32);
+  placeAt(plate, 0, d * 0.08, h * 0.65 + h * 0.02);
+  const ring = torus(Math.min(w, d) * 0.42, h * 0.01, assetMaterials.steel_dark, 8, 32);
+  placeAt(ring, 0, d * 0.08, h * 0.65 + h * 0.025);
+  const display = bx(w * 0.55, d * 0.04, h * 0.18, assetMaterials.screen);
+  placeAt(display, 0, -d / 2 + d * 0.02, h * 0.35);
+  const dialTemp = vcyl(w * 0.08, w * 0.08, h * 0.06, assetMaterials.cap_white, 18);
+  placeAt(dialTemp, -w * 0.26, -d / 2 + d * 0.02, h * 0.55);
+  const dialStir = vcyl(w * 0.08, w * 0.08, h * 0.06, assetMaterials.cap_white, 18);
+  placeAt(dialStir, w * 0.26, -d / 2 + d * 0.02, h * 0.55);
+  const led = sph(w * 0.012, assetMaterials.led_red, 10, 8);
+  placeAt(led, w * 0.4, -d / 2 + d * 0.02, h * 0.61);
+  g.add(body, plate, ring, display, dialTemp, dialStir, led);
+  return g;
+}
+
+function buildBalance(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.22, 0.32, 0.12];
+  const [w, d, h] = [dims[0] || 0.22, dims[1] || 0.32, dims[2] || 0.12];
+  const base = bx(w, d, h * 0.45, assetMaterials.panel);
+  placeAt(base, 0, 0, h * 0.225);
+  const backWall = bx(w, d * 0.08, h * 0.55, assetMaterials.panel);
+  placeAt(backWall, 0, d * 0.42, h * 0.45 + h * 0.275);
+  const display = bx(w * 0.75, d * 0.02, h * 0.32, assetMaterials.screen);
+  placeAt(display, 0, d * 0.38, h * 0.45 + h * 0.32);
+  const pan = vcyl(Math.min(w, d) * 0.32, Math.min(w, d) * 0.32, h * 0.02, assetMaterials.steel, 32);
+  placeAt(pan, 0, -d * 0.04, h * 0.45 + h * 0.02);
+  const post = vcyl(w * 0.04, w * 0.04, h * 0.08, assetMaterials.steel_dark, 14);
+  placeAt(post, 0, -d * 0.04, h * 0.45 - h * 0.04);
+  for (let i = 0; i < 4; i++) {
+    const btn = bx(w * 0.12, d * 0.04, h * 0.04, assetMaterials.plastic_dark);
+    placeAt(btn, -w * 0.32 + i * w * 0.21, d * 0.24, h * 0.45 + h * 0.022);
+    g.add(btn);
+  }
+  g.add(base, backWall, display, pan, post);
+  return g;
+}
+
+function buildPhMeter(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.12, 0.18, 0.06];
+  const [w, d, h] = [dims[0] || 0.12, dims[1] || 0.18, dims[2] || 0.06];
+  const body = bx(w, d, h, assetMaterials.panel);
+  placeAt(body, 0, 0, h / 2);
+  const display = bx(w * 0.78, d * 0.4, h * 0.04, assetMaterials.screen);
+  placeAt(display, 0, d * 0.15, h + 0.002);
+  display.rotation.x = -Math.PI / 8;
+  const probeHolder = vcyl(w * 0.06, w * 0.06, h * 1.6, assetMaterials.steel, 14);
+  placeAt(probeHolder, w * 0.55, d * 0.3, h * 0.8);
+  const probe = vcyl(w * 0.04, w * 0.04, h * 1.4, assetMaterials.glass, 14, true);
+  placeAt(probe, w * 0.55, d * 0.3, h * 0.7);
+  for (let i = 0; i < 6; i++) {
+    const btn = bx(w * 0.14, d * 0.08, h * 0.05, assetMaterials.plastic_dark);
+    placeAt(btn, -w * 0.32 + (i % 3) * w * 0.32, -d * 0.05 - Math.floor(i / 3) * d * 0.12, h + 0.002);
+    g.add(btn);
+  }
+  g.add(body, display, probeHolder, probe);
+  return g;
+}
+
+function buildCentrifuge(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.28, 0.28, 0.22];
+  const [w, d, h] = [dims[0] || 0.28, dims[1] || 0.28, dims[2] || 0.22];
+  const body = bx(w, d, h * 0.7, assetMaterials.panel);
+  placeAt(body, 0, 0, h * 0.35);
+  const lid = vcyl(Math.min(w, d) * 0.48, Math.min(w, d) * 0.48, h * 0.18, assetMaterials.panel, 32);
+  placeAt(lid, 0, 0, h * 0.7 + h * 0.09);
+  const lidTop = disk(Math.min(w, d) * 0.48, h * 0.005, assetMaterials.panel, 32);
+  placeAt(lidTop, 0, 0, h * 0.7 + h * 0.18);
+  const display = bx(w * 0.5, d * 0.04, h * 0.12, assetMaterials.screen);
+  placeAt(display, 0, -d / 2 + 0.002, h * 0.4);
+  const button1 = bx(w * 0.12, d * 0.04, h * 0.05, assetMaterials.plastic_dark);
+  placeAt(button1, -w * 0.25, -d / 2 + 0.002, h * 0.2);
+  const button2 = bx(w * 0.12, d * 0.04, h * 0.05, assetMaterials.plastic_dark);
+  placeAt(button2, w * 0.25, -d / 2 + 0.002, h * 0.2);
+  const handle = bx(w * 0.2, d * 0.05, h * 0.04, assetMaterials.steel_dark);
+  placeAt(handle, 0, d * 0.1, h * 0.7 + h * 0.18);
+  const led = sph(w * 0.012, assetMaterials.led_green, 10, 8);
+  placeAt(led, w * 0.32, -d / 2 + 0.002, h * 0.5);
+  g.add(body, lid, lidTop, display, button1, button2, handle, led);
+  return g;
+}
+
+function buildVortex(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.12, 0.14, 0.13];
+  const [w, d, h] = [dims[0] || 0.12, dims[1] || 0.14, dims[2] || 0.13];
+  const body = bx(w, d, h * 0.7, assetMaterials.panel);
+  placeAt(body, 0, 0, h * 0.35);
+  const platform = vcyl(Math.min(w, d) * 0.4, Math.min(w, d) * 0.4, h * 0.05, assetMaterials.rubber, 28);
+  placeAt(platform, 0, 0, h * 0.7 + h * 0.025);
+  const cup = vcyl(Math.min(w, d) * 0.18, Math.min(w, d) * 0.18, h * 0.08, assetMaterials.rubber, 20, true);
+  placeAt(cup, 0, 0, h * 0.7 + h * 0.09);
+  const dial = vcyl(w * 0.13, w * 0.13, h * 0.05, assetMaterials.cap_white, 18);
+  placeAt(dial, -w * 0.28, -d / 2 + 0.002, h * 0.35);
+  const switchBtn = bx(w * 0.16, d * 0.04, h * 0.06, assetMaterials.plastic_dark);
+  placeAt(switchBtn, w * 0.28, -d / 2 + 0.002, h * 0.35);
+  g.add(body, platform, cup, dial, switchBtn);
+  return g;
+}
+
+function buildStirBar(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.003;
+  const len = Number(spec.height_m) || 0.025;
+  const body = hcyl(r, r, len - r * 2, assetMaterials.plastic_white, "x", 18);
+  placeAt(body, 0, 0, r);
+  const capL = sph(r, assetMaterials.plastic_white, 14, 10);
+  placeAt(capL, -(len - r * 2) / 2, 0, r);
+  const capR = sph(r, assetMaterials.plastic_white, 14, 10);
+  placeAt(capR, (len - r * 2) / 2, 0, r);
+  g.add(body, capL, capR);
+  return g;
+}
+
+function buildRingStand(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.16, 0.1, 0.6];
+  const [w, d, totalH] = [dims[0] || 0.16, dims[1] || 0.1, dims[2] || 0.6];
+  const baseH = totalH * 0.025;
+  const rodR = w * 0.04;
+  const base = bx(w, d, baseH, assetMaterials.steel_dark);
+  placeAt(base, 0, 0, baseH / 2);
+  const rod = vcyl(rodR, rodR, totalH - baseH, assetMaterials.steel, 16);
+  placeAt(rod, -w * 0.35, 0, baseH + (totalH - baseH) / 2);
+  const clampBoss = bx(w * 0.18, d * 0.4, totalH * 0.04, assetMaterials.steel_dark);
+  placeAt(clampBoss, -w * 0.25, 0, totalH * 0.55);
+  const clampArm = hcyl(rodR * 0.85, rodR * 0.85, w * 0.65, assetMaterials.steel, "x", 14);
+  placeAt(clampArm, w * 0.05, 0, totalH * 0.55);
+  const clampScrew = vcyl(rodR * 0.6, rodR * 0.6, totalH * 0.06, assetMaterials.steel_dark, 14);
+  placeAt(clampScrew, -w * 0.25, d * 0.3, totalH * 0.55);
+  clampScrew.rotation.x = Math.PI / 2;
+  const ringR = w * 0.32;
+  const ring = torus(ringR, rodR * 0.5, assetMaterials.steel_dark, 8, 24);
+  placeAt(ring, w * 0.32, 0, totalH * 0.55);
+  ring.rotation.x = Math.PI / 2;
+  g.add(base, rod, clampBoss, clampArm, clampScrew, ring);
+  return g;
+}
+
+function buildBench(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.6, 0.4, 0.02];
+  const [w, d, h] = [dims[0] || 0.6, dims[1] || 0.4, dims[2] || 0.02];
+  const top = bx(w, d, h, assetMaterials.wood);
+  placeAt(top, 0, 0, h / 2);
+  const edge = bx(w + 0.004, d + 0.004, h * 0.2, assetMaterials.panel_dark);
+  placeAt(edge, 0, 0, h - h * 0.1);
+  g.add(top, edge);
+  return g;
+}
+
+function buildShelf(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.5, 0.18, 0.02];
+  const [w, d, h] = [dims[0] || 0.5, dims[1] || 0.18, dims[2] || 0.02];
+  const top = bx(w, d, h, assetMaterials.plastic_white);
+  placeAt(top, 0, 0, h / 2);
+  const bracketL = bx(w * 0.04, d, h * 4, assetMaterials.steel_dark);
+  placeAt(bracketL, -w / 2 + w * 0.02, 0, -h * 2 + h / 2);
+  const bracketR = bx(w * 0.04, d, h * 4, assetMaterials.steel_dark);
+  placeAt(bracketR, w / 2 - w * 0.02, 0, -h * 2 + h / 2);
+  g.add(top, bracketL, bracketR);
+  return g;
+}
+
+function buildFumeWall(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.6, 0.02, 0.5];
+  const [w, d, h] = [dims[0] || 0.6, dims[1] || 0.02, dims[2] || 0.5];
+  const wall = bx(w, d, h, assetMaterials.glass);
+  placeAt(wall, 0, 0, h / 2);
+  const frame = bx(w + 0.01, d * 2, h * 0.05, assetMaterials.panel_dark);
+  placeAt(frame, 0, 0, h * 0.025);
+  const top = bx(w + 0.01, d * 2, h * 0.05, assetMaterials.panel_dark);
+  placeAt(top, 0, 0, h - h * 0.025);
+  g.add(wall, frame, top);
+  return g;
+}
+
+function buildWeighBoat(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.05, 0.05, 0.005];
+  const [w, d, h] = [dims[0] || 0.05, dims[1] || 0.05, dims[2] || 0.005];
+  const base = bx(w, d, h * 0.3, assetMaterials.paper_white);
+  placeAt(base, 0, 0, h * 0.15);
+  const wall = h * 0.4;
+  const lips = [
+    { w, d: wall, x: 0, y: -d / 2 + wall / 2 },
+    { w, d: wall, x: 0, y: d / 2 - wall / 2 },
+    { w: wall, d: d - wall * 2, x: -w / 2 + wall / 2, y: 0 },
+    { w: wall, d: d - wall * 2, x: w / 2 - wall / 2, y: 0 }
+  ];
+  for (const lip of lips) {
+    const m = bx(lip.w, lip.d, h * 0.9, assetMaterials.paper_white);
+    placeAt(m, lip.x, lip.y, h * 0.6);
+    m.rotation.x = lip.y > 0 ? -0.15 : lip.y < 0 ? 0.15 : 0;
+    m.rotation.y = lip.x > 0 ? 0.15 : lip.x < 0 ? -0.15 : 0;
+    g.add(m);
+  }
+  g.add(base);
+  return g;
+}
+
+function buildSpatula(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.12, 0.01, 0.005];
+  const [w, d, h] = [dims[0] || 0.12, dims[1] || 0.01, dims[2] || 0.005];
+  const handle = hcyl(h * 0.7, h * 0.7, w * 0.68, assetMaterials.steel, "x", 14);
+  placeAt(handle, -w * 0.16, 0, h * 0.7);
+  const scoopL = bx(w * 0.22, d * 1.6, h * 0.4, assetMaterials.steel);
+  placeAt(scoopL, w * 0.32, 0, h * 0.4);
+  const scoopR = bx(w * 0.22, d * 1.6, h * 0.4, assetMaterials.steel);
+  placeAt(scoopR, -w * 0.5, 0, h * 0.4);
+  g.add(handle, scoopL, scoopR);
+  return g;
+}
+
+function buildPrimitiveCylinder(spec) {
+  const g = new THREE.Group();
+  const r = Number(spec.radius_m) || 0.025;
+  const h = Number(spec.height_m) || 0.05;
+  const mesh = vcyl(r, r, h, materials.rigid_body, 24);
+  placeAt(mesh, 0, 0, h / 2);
+  g.add(mesh);
+  return g;
+}
+
+function buildPrimitiveBox(spec) {
+  const g = new THREE.Group();
+  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.05, 0.05, 0.05];
+  const [w, d, h] = [dims[0] || 0.05, dims[1] || 0.05, dims[2] || 0.05];
+  const mesh = bx(w, d, h, materials.rigid_body);
+  placeAt(mesh, 0, 0, h / 2);
+  g.add(mesh);
+  return g;
+}
+
+const ASSET_BUILDERS = {
+  vial_1_5ml: buildVialSmall,
+  vial_4ml: (spec) => buildVialScrewCap(spec, assetMaterials.cap_blue),
+  test_tube: buildTestTube,
+  beaker_50: buildBeaker,
+  beaker_250: buildBeaker,
+  erlenmeyer_250: buildErlenmeyer,
+  round_flask_250: buildRoundFlask,
+  graduated_cyl_100: buildGraduatedCylinder,
+  petri: buildPetri,
+  pipette: buildPipette,
+  burette: buildBurette,
+  reagent_bottle: buildReagentBottle,
+  centrifuge_tube_15: buildCentrifugeTube,
+  vial_rack: buildVialRack,
+  tube_rack: buildTubeRack,
+  tray: buildTray,
+  well_plate_96: buildWellPlate,
+  hot_plate: buildHotPlate,
+  balance: buildBalance,
+  ph_meter: buildPhMeter,
+  centrifuge: buildCentrifuge,
+  vortex: buildVortex,
+  stir_bar: buildStirBar,
+  ring_stand: buildRingStand,
+  bench: buildBench,
+  shelf: buildShelf,
+  fume_wall: buildFumeWall,
+  weigh_boat: buildWeighBoat,
+  spatula: buildSpatula,
+  cylinder: buildPrimitiveCylinder,
+  box: buildPrimitiveBox,
+  plate: buildPrimitiveBox
+};
+
 function makeRigidBody(entity) {
   const spec = entitySpec(entity);
-  if (spec.collision_shape === "cylinder") {
-    const radius = Number(spec.radius_m) || 0.012;
-    const height = Number(spec.height_m) || 0.05;
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 24), materials.rigid_body);
-    mesh.position.z = height / 2;
-    const group = new THREE.Group();
-    group.add(mesh);
-    return group;
-  }
-  const dims = Array.isArray(spec.dimensions_m) ? spec.dimensions_m.map(Number) : [0.05, 0.05, 0.05];
-  const group = new THREE.Group();
-  const mesh = boxMesh({ x: dims[0] || 0.05, y: dims[1] || 0.05, z: dims[2] || 0.05 }, materials.rigid_body);
-  mesh.position.z = (dims[2] || 0.05) / 2;
-  group.add(mesh);
-  return group;
+  const assetId = typeof spec.asset === "string" ? spec.asset : "";
+  const builder = ASSET_BUILDERS[assetId];
+  if (builder) return builder(spec);
+  if (spec.collision_shape === "cylinder") return buildPrimitiveCylinder(spec);
+  return buildPrimitiveBox(spec);
 }
 
 function buildEntity(entity, armAsset) {
@@ -589,6 +1315,7 @@ async function rebuild(state) {
     group.traverse((node) => {
       if (node.isMesh) {
         node.userData.entityId = id;
+        if (!node.userData.originalMaterial) node.userData.originalMaterial = node.material;
         pickables.push(node);
         if (!node.userData.isCameraHitbox) {
           node.castShadow = true;
@@ -598,7 +1325,7 @@ async function rebuild(state) {
     });
   }
   attachSelected();
-  settleRigidBodies(false);
+  settleRigidBodies(true);
   updateCollisions();
 }
 
@@ -695,8 +1422,9 @@ function settleRigidBodies(markDirty = true) {
   return changed;
 }
 
-function persistPhysicsIfNeeded(now) {
-  if (draggingTransform || physicsDirtyIds.size === 0 || now - lastPhysicsChangeMs < 250 || now - lastPhysicsPersistMs < 600) return;
+function persistPhysicsIfNeeded(now, force = false) {
+  if (draggingTransform || physicsDirtyIds.size === 0) return;
+  if (!force && (now - lastPhysicsChangeMs < PHYSICS_PERSIST_SETTLE_MS || now - lastPhysicsPersistMs < PHYSICS_PERSIST_INTERVAL_MS)) return;
   const ids = Array.from(physicsDirtyIds);
   physicsDirtyIds.clear();
   lastPhysicsPersistMs = now;
@@ -743,6 +1471,8 @@ function updateCollisions() {
       applyMaterial(group, materials.collision);
     } else if (isSelected) {
       applyMaterial(group, materials.selected);
+    } else if (String(entity.kind) === "rigid_body") {
+      applyMaterial(group, null);
     } else {
       applyMaterial(group, materials[String(entity.kind)] || materials.rigid_body);
     }
@@ -850,6 +1580,12 @@ window.addEventListener("vw:create-at-point", (event) => {
 installTransformEvents(translateTransform);
 installTransformEvents(rotateTransform);
 
+function runPhysicsWatchdog(forcePersist = false) {
+  const now = performance.now();
+  settleRigidBodies(true);
+  persistPhysicsIfNeeded(now, forcePersist);
+}
+
 function resize() {
   const rect = root.getBoundingClientRect();
   const width = Math.max(1, rect.width);
@@ -861,9 +1597,7 @@ function resize() {
 
 function animate() {
   resize();
-  const now = performance.now();
-  settleRigidBodies(true);
-  persistPhysicsIfNeeded(now);
+  runPhysicsWatchdog(false);
   hideRemovedTranslateHandleTypes(translateTransform);
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
@@ -877,4 +1611,5 @@ window.addEventListener("vw:transform-mode", (event) => {
 window.addEventListener("resize", resize);
 setTransformMode(transformMode);
 void rebuild(editorApi()?.getState?.() || {});
+window.setInterval(() => runPhysicsWatchdog(true), PHYSICS_WATCHDOG_INTERVAL_MS);
 animate();

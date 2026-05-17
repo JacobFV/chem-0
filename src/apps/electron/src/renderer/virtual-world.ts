@@ -21,6 +21,53 @@ window.Chem0Shell.installThemeSync({
 const params = new URLSearchParams(window.location.search);
 const worldId = params.get("world_id") ?? "";
 
+type AssetDef = {
+  id: string;
+  label: string;
+  category: string;
+  build: () => { tool: string; name?: string; spec?: JsonObject; pose?: JsonObject; collisionEnabled?: boolean };
+};
+
+const ASSET_LIBRARY: AssetDef[] = [
+  { id: "arm", label: "SO-101 arm", category: "Robot", build: () => ({ tool: "arm", name: "SO-101 arm" }) },
+  { id: "camera", label: "Camera", category: "Sensors", build: () => ({ tool: "camera", name: "Camera" }) },
+  { id: "depth_camera", label: "Depth camera", category: "Sensors", build: () => ({ tool: "camera", name: "Depth camera", spec: { resolution: "640x480", fov_degrees: 70, modality: "depth" } }) },
+  { id: "light", label: "Area light", category: "Lighting", build: () => ({ tool: "light", name: "Area light", spec: { type: "area", intensity: 1, color: "#ffffff" } }) },
+  { id: "spot", label: "Spot light", category: "Lighting", build: () => ({ tool: "light", name: "Spot light", spec: { type: "spot", intensity: 2, color: "#fff5d6" } }) },
+  { id: "vial", label: "Vial 1.5mL", category: "Glassware", build: () => ({ tool: "rigid", name: "Vial 1.5mL", spec: { mass_kg: 0.012, collision_shape: "cylinder", radius_m: 0.006, height_m: 0.045, asset: "vial_1_5ml" } }) },
+  { id: "vial4", label: "Vial 4mL", category: "Glassware", build: () => ({ tool: "rigid", name: "Vial 4mL", spec: { mass_kg: 0.025, collision_shape: "cylinder", radius_m: 0.009, height_m: 0.05, asset: "vial_4ml" } }) },
+  { id: "test_tube", label: "Test tube", category: "Glassware", build: () => ({ tool: "rigid", name: "Test tube", spec: { mass_kg: 0.018, collision_shape: "cylinder", radius_m: 0.0075, height_m: 0.1, asset: "test_tube" } }) },
+  { id: "beaker_50", label: "Beaker 50mL", category: "Glassware", build: () => ({ tool: "rigid", name: "Beaker 50mL", spec: { mass_kg: 0.04, collision_shape: "cylinder", radius_m: 0.021, height_m: 0.055, asset: "beaker_50" } }) },
+  { id: "beaker_250", label: "Beaker 250mL", category: "Glassware", build: () => ({ tool: "rigid", name: "Beaker 250mL", spec: { mass_kg: 0.11, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.085, asset: "beaker_250" } }) },
+  { id: "erlenmeyer", label: "Erlenmeyer 250mL", category: "Glassware", build: () => ({ tool: "rigid", name: "Erlenmeyer 250mL", spec: { mass_kg: 0.13, collision_shape: "cylinder", radius_m: 0.04, height_m: 0.13, asset: "erlenmeyer_250" } }) },
+  { id: "round_flask", label: "Round-bottom flask", category: "Glassware", build: () => ({ tool: "rigid", name: "Round flask 250mL", spec: { mass_kg: 0.13, collision_shape: "cylinder", radius_m: 0.04, height_m: 0.09, asset: "round_flask_250" } }) },
+  { id: "graduated_cyl", label: "Graduated cylinder", category: "Glassware", build: () => ({ tool: "rigid", name: "Graduated cylinder 100mL", spec: { mass_kg: 0.09, collision_shape: "cylinder", radius_m: 0.014, height_m: 0.215, asset: "graduated_cyl_100" } }) },
+  { id: "petri", label: "Petri dish", category: "Glassware", build: () => ({ tool: "rigid", name: "Petri dish", spec: { mass_kg: 0.03, collision_shape: "cylinder", radius_m: 0.045, height_m: 0.015, asset: "petri" } }) },
+  { id: "pipette", label: "Pipette", category: "Glassware", build: () => ({ tool: "rigid", name: "Pipette", spec: { mass_kg: 0.02, collision_shape: "cylinder", radius_m: 0.005, height_m: 0.22, asset: "pipette" } }) },
+  { id: "burette", label: "Burette 50mL", category: "Glassware", build: () => ({ tool: "rigid", name: "Burette 50mL", spec: { mass_kg: 0.18, collision_shape: "cylinder", radius_m: 0.012, height_m: 0.55, asset: "burette" } }) },
+  { id: "reagent_bottle", label: "Reagent bottle", category: "Containers", build: () => ({ tool: "rigid", name: "Reagent bottle", spec: { mass_kg: 0.25, collision_shape: "cylinder", radius_m: 0.035, height_m: 0.13, asset: "reagent_bottle" } }) },
+  { id: "sample_tube", label: "Centrifuge tube", category: "Containers", build: () => ({ tool: "rigid", name: "Centrifuge tube 15mL", spec: { mass_kg: 0.02, collision_shape: "cylinder", radius_m: 0.0085, height_m: 0.118, asset: "centrifuge_tube_15" } }) },
+  { id: "vial_rack", label: "Vial rack 4×3", category: "Containers", build: () => ({ tool: "rigid", name: "Vial rack", spec: { mass_kg: 0.2, collision_shape: "box", dimensions_m: [0.12, 0.09, 0.035], asset: "vial_rack" } }) },
+  { id: "tube_rack", label: "Tube rack", category: "Containers", build: () => ({ tool: "rigid", name: "Tube rack", spec: { mass_kg: 0.18, collision_shape: "box", dimensions_m: [0.18, 0.06, 0.05], asset: "tube_rack" } }) },
+  { id: "tray", label: "Tray", category: "Containers", build: () => ({ tool: "rigid", name: "Tray", spec: { mass_kg: 0.35, collision_shape: "box", dimensions_m: [0.3, 0.2, 0.025], asset: "tray" } }) },
+  { id: "well_plate", label: "96-well plate", category: "Containers", build: () => ({ tool: "rigid", name: "96-well plate", spec: { mass_kg: 0.07, collision_shape: "box", dimensions_m: [0.127, 0.085, 0.015], asset: "well_plate_96" } }) },
+  { id: "hot_plate", label: "Hot plate / stirrer", category: "Equipment", build: () => ({ tool: "rigid", name: "Hot plate stirrer", spec: { mass_kg: 2.5, collision_shape: "box", dimensions_m: [0.18, 0.18, 0.1], asset: "hot_plate" } }) },
+  { id: "balance", label: "Analytical balance", category: "Equipment", build: () => ({ tool: "rigid", name: "Analytical balance", spec: { mass_kg: 5, collision_shape: "box", dimensions_m: [0.22, 0.32, 0.12], asset: "balance" } }) },
+  { id: "ph_meter", label: "pH meter", category: "Equipment", build: () => ({ tool: "rigid", name: "pH meter", spec: { mass_kg: 0.6, collision_shape: "box", dimensions_m: [0.12, 0.18, 0.06], asset: "ph_meter" } }) },
+  { id: "centrifuge", label: "Centrifuge", category: "Equipment", build: () => ({ tool: "rigid", name: "Centrifuge", spec: { mass_kg: 8, collision_shape: "box", dimensions_m: [0.28, 0.28, 0.22], asset: "centrifuge" } }) },
+  { id: "vortex", label: "Vortex mixer", category: "Equipment", build: () => ({ tool: "rigid", name: "Vortex mixer", spec: { mass_kg: 2, collision_shape: "box", dimensions_m: [0.12, 0.14, 0.13], asset: "vortex" } }) },
+  { id: "stir_bar", label: "Stir bar", category: "Equipment", build: () => ({ tool: "rigid", name: "Stir bar", spec: { mass_kg: 0.005, collision_shape: "cylinder", radius_m: 0.003, height_m: 0.025, asset: "stir_bar" } }) },
+  { id: "ring_stand", label: "Ring stand", category: "Equipment", build: () => ({ tool: "rigid", name: "Ring stand", spec: { mass_kg: 1.2, collision_shape: "box", dimensions_m: [0.16, 0.1, 0.6], asset: "ring_stand" } }) },
+  { id: "bench", label: "Bench top", category: "Structure", build: () => ({ tool: "rigid", name: "Bench", spec: { mass_kg: 0, collision_shape: "box", dimensions_m: [0.6, 0.4, 0.02], asset: "bench" }, pose: { x: 0.2, y: 0, z: 0.01 } }) },
+  { id: "shelf", label: "Shelf", category: "Structure", build: () => ({ tool: "rigid", name: "Shelf", spec: { mass_kg: 0, collision_shape: "box", dimensions_m: [0.5, 0.18, 0.02], asset: "shelf" } }) },
+  { id: "fume_wall", label: "Fume hood wall", category: "Structure", build: () => ({ tool: "rigid", name: "Fume hood wall", spec: { mass_kg: 0, collision_shape: "box", dimensions_m: [0.6, 0.02, 0.5], asset: "fume_wall" } }) },
+  { id: "box", label: "Box", category: "Primitives", build: () => ({ tool: "rigid", name: "Box", spec: { collision_shape: "box", dimensions_m: [0.05, 0.05, 0.05], asset: "box" } }) },
+  { id: "cylinder", label: "Cylinder", category: "Primitives", build: () => ({ tool: "rigid", name: "Cylinder", spec: { collision_shape: "cylinder", radius_m: 0.025, height_m: 0.05, asset: "cylinder" } }) },
+  { id: "plate", label: "Plate", category: "Primitives", build: () => ({ tool: "rigid", name: "Plate", spec: { collision_shape: "box", dimensions_m: [0.1, 0.1, 0.005], asset: "plate" } }) }
+];
+
+const ASSETS_BY_ID = new Map(ASSET_LIBRARY.map((asset) => [asset.id, asset]));
+
 const titleEl = document.querySelector<HTMLElement>("#vw-title")!;
 const subtitleEl = document.querySelector<HTMLElement>("#vw-subtitle")!;
 const assetList = document.querySelector<HTMLUListElement>("#vw-asset-list")!;
@@ -270,30 +317,69 @@ async function refresh(): Promise<void> {
   render();
 }
 
+function defaultPoseFor(tool: string): JsonObject {
+  if (tool === "camera") return { x: 0.2, y: -0.2, z: 0.4 };
+  if (tool === "light") return { x: 0, y: -0.25, z: 0.6 };
+  if (tool === "arm") return { x: 0, y: 0, z: 0 };
+  return { x: 0.1, y: 0.1, z: 0.03 };
+}
+
 async function createEntity(kind: string, poseOverride: JsonObject = {}): Promise<void> {
-  const pose = (fallback: JsonObject) => ({ ...fallback, ...poseOverride });
-  if (kind === "arm") {
-    const result = await chem0.callTool("create_virtual_arm", { world_id: worldId, name: "SO-101 arm", make_default: true, pose: pose({ x: 0, y: 0, z: 0 }) });
+  const asset = ASSETS_BY_ID.get(kind);
+  const def = asset
+    ? asset.build()
+    : { tool: "rigid", name: kind, spec: { collision_shape: "box", dimensions_m: [0.05, 0.05, 0.05], asset: kind } };
+  const pose = { ...defaultPoseFor(def.tool), ...(def.pose ?? {}), ...poseOverride };
+  if (def.tool === "arm") {
+    const result = await chem0.callTool("create_virtual_arm", { world_id: worldId, name: def.name ?? "SO-101 arm", make_default: true, pose });
     selectedId = String((result.entity as JsonObject | undefined)?.id ?? "");
-  } else if (kind === "camera") {
-    const result = await chem0.callTool("create_virtual_camera", { world_id: worldId, name: "Camera", pose: pose({ x: 0.2, y: -0.2, z: 0.4 }) });
+  } else if (def.tool === "camera") {
+    const result = await chem0.callTool("create_virtual_camera", { world_id: worldId, name: def.name ?? "Camera", pose, spec: def.spec ?? {} });
     selectedId = String((result.entity as JsonObject | undefined)?.id ?? "");
-  } else if (kind === "light") {
-    const result = await chem0.callTool("create_virtual_light", { world_id: worldId, name: "Light", pose: pose({ x: 0, y: -0.25, z: 0.6 }) });
+  } else if (def.tool === "light") {
+    const result = await chem0.callTool("create_virtual_light", { world_id: worldId, name: def.name ?? "Light", pose, spec: def.spec ?? {} });
     selectedId = String((result.entity as JsonObject | undefined)?.id ?? "");
   } else {
     const result = await chem0.callTool("create_virtual_rigid_body", {
       world_id: worldId,
-      name: kind === "vial" ? "Vial proxy" : "Box",
-      pose: pose({ x: 0.1, y: 0.1, z: 0.03 }),
-      spec: kind === "vial"
-        ? { mass_kg: 0.04, collision_shape: "cylinder", radius_m: 0.012, height_m: 0.05, collision_mode: "full", collides_with: ["arm", "rigid_body"] }
-        : { mass_kg: 0.1, collision_shape: "box", dimensions_m: [0.05, 0.05, 0.05], collision_mode: "full", collides_with: ["arm", "rigid_body"] }
+      name: def.name ?? "Rigid body",
+      pose,
+      spec: def.spec ?? { collision_shape: "box", dimensions_m: [0.05, 0.05, 0.05] },
+      collision_enabled: def.collisionEnabled !== false
     });
     selectedId = String((result.entity as JsonObject | undefined)?.id ?? "");
   }
   await refresh();
 }
+
+function renderToolbox(): void {
+  const toolbox = document.querySelector<HTMLElement>("#vw-toolbox");
+  if (!toolbox) return;
+  toolbox.replaceChildren();
+  const byCategory = new Map<string, AssetDef[]>();
+  for (const asset of ASSET_LIBRARY) {
+    const list = byCategory.get(asset.category) ?? [];
+    list.push(asset);
+    byCategory.set(asset.category, list);
+  }
+  for (const [category, items] of byCategory) {
+    const section = document.createElement("section");
+    section.className = "pane-section vw-group";
+    const heading = document.createElement("h2");
+    heading.textContent = category;
+    section.append(heading);
+    for (const item of items) {
+      const btn = document.createElement("button");
+      btn.className = "vw-tool";
+      btn.dataset.create = item.id;
+      btn.textContent = `+ ${item.label}`;
+      section.append(btn);
+    }
+    toolbox.append(section);
+  }
+}
+
+renderToolbox();
 
 for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-create]")) {
   btn.addEventListener("click", (event) => {

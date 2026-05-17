@@ -36,7 +36,7 @@ for i in range(5, N):
     pH.append(target_pH + max(0.45, 1.30 * np.exp(-p * 1.8)) * rng.standard_normal())
     R.append(max(2.5, (15.0 * np.exp(-p * 2.6) + target_R) + 0.55 * (1 - 0.6 * p) * rng.standard_normal()))
 
-pH = np.round(np.array(pH), 2)
+pH = np.round(np.array(pH), 1)   # ±0.5 inference uncertainty — 1 decimal is generous
 R  = np.round(np.array(R),  2)
 trials = np.arange(1, N + 1)
 
@@ -85,7 +85,7 @@ def draw(t):
     ax1.tick_params(labelbottom=False)
 
     # current values, big, top right
-    ax1.text(0.985, 0.92, f"pH  {pH[t]:.2f}", transform=ax1.transAxes,
+    ax1.text(0.985, 0.92, f"pH  {pH[t]:.1f}", transform=ax1.transAxes,
              ha="right", va="top", color="white", fontsize=18,
              fontweight="bold", family="DejaVu Sans Mono")
     ax2.text(0.985, 0.92, f"R   {R[t]:.2f} kΩ", transform=ax2.transAxes,

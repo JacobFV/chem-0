@@ -4,6 +4,7 @@ import { TransformControls } from "./vendor/TransformControls.js";
 
 const root = document.querySelector("#vw-scene");
 const banner = document.querySelector("#vw-collision-banner");
+const dropStatus = document.querySelector("#vw-drop-status");
 
 function editorApi() {
   return window.virtualWorldEditor;
@@ -49,6 +50,7 @@ const pickables = [];
 let entities = [];
 let selectedId = "";
 let draggingTransform = false;
+let dropStatusTimer = 0;
 
 const materials = {
   arm: new THREE.MeshStandardMaterial({ color: 0xd8bd55, roughness: 0.55 }),
@@ -238,6 +240,23 @@ function pointerToGround(event) {
   return dropPoint;
 }
 
+function sceneContainsPoint(event) {
+  const rect = root.getBoundingClientRect();
+  return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+}
+
+function showDropStatus(message, error = false) {
+  if (!dropStatus) return;
+  window.clearTimeout(dropStatusTimer);
+  dropStatus.textContent = message;
+  dropStatus.classList.toggle("error", error);
+  dropStatus.hidden = false;
+  dropStatusTimer = window.setTimeout(() => {
+    dropStatus.hidden = true;
+    dropStatus.classList.remove("error");
+  }, 1800);
+}
+
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (draggingTransform) return;
   const rect = renderer.domElement.getBoundingClientRect();
@@ -251,31 +270,40 @@ renderer.domElement.addEventListener("pointerdown", (event) => {
 });
 
 function dragKind(event) {
-  return event.dataTransfer?.getData("application/x-chem0-asset") ||
-    event.dataTransfer?.getData("text/plain") ||
-    window.virtualWorldDragKind ||
-    "box";
+  const kind = event.dataTransfer?.getData("application/x-chem0-asset") || event.dataTransfer?.getData("text/plain") || "";
+  return ["arm", "camera", "light", "box", "vial"].includes(kind) ? kind : "";
 }
 
 function handleDragOver(event) {
+  if (!sceneContainsPoint(event)) return;
   event.preventDefault();
   event.stopPropagation();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
 }
 
-function handleDrop(event) {
+async function handleDrop(event) {
+  if (!sceneContainsPoint(event)) return;
   event.preventDefault();
   event.stopPropagation();
   const kind = dragKind(event);
+  if (!kind) {
+    showDropStatus("Drop missing toolbox asset", true);
+    console.error("Virtual world drop ignored: DataTransfer did not include a valid asset kind.");
+    return;
+  }
   const point = pointerToGround(event);
-  editorApi()?.createEntity?.(kind, { x: point.x, y: point.y, z: kind === "camera" ? 0.4 : kind === "light" ? 0.6 : 0 });
-  window.virtualWorldDragKind = "";
+  try {
+    showDropStatus(`Adding ${kind}`);
+    await editorApi()?.createEntity?.(kind, { x: point.x, y: point.y, z: kind === "camera" ? 0.4 : kind === "light" ? 0.6 : 0 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    showDropStatus(`Add failed: ${message}`, true);
+    console.error("Virtual world asset creation failed.", error);
+  }
 }
 
-root.addEventListener("dragover", handleDragOver);
-root.addEventListener("drop", handleDrop);
-renderer.domElement.addEventListener("dragover", handleDragOver);
-renderer.domElement.addEventListener("drop", handleDrop);
+document.addEventListener("dragover", handleDragOver, true);
+document.addEventListener("drop", (event) => void handleDrop(event), true);
 
 transform.addEventListener("dragging-changed", (event) => {
   draggingTransform = Boolean(event.value);

@@ -1493,9 +1493,10 @@ body.workbench-detached .appbar-group.left .tab-btn { border-right: none; }
 
 .composer-actions {
   display: flex;
+  flex-direction: row;
   gap: 8px;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
 .round-btn {

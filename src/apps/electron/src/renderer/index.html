@@ -22,7 +22,10 @@
           <button class="icon-btn tab-btn" data-tab="lhs:experiments" title="Experiments" aria-label="Experiments">
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5 2v4L2 13a1 1 0 0 0 .9 1.4h10.2A1 1 0 0 0 14 13L11 6V2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><line x1="4" y1="2" x2="12" y2="2" stroke="currentColor" stroke-width="1.2"/></svg>
           </button>
-          <button class="icon-btn tab-btn" data-tab="lhs:robots" title="Connected arms" aria-label="Connected arms">
+          <button class="icon-btn tab-btn" data-tab="lhs:worlds" title="Worlds" aria-label="Worlds">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 8h11M8 2.5c1.5 1.4 2.2 3.2 2.2 5.5S9.5 12.1 8 13.5C6.5 12.1 5.8 10.3 5.8 8S6.5 3.9 8 2.5z" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+          </button>
+          <button class="icon-btn tab-btn" data-tab="lhs:robots" title="Arms" aria-label="Arms">
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="3" width="12" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="0.8" fill="currentColor"/><circle cx="10" cy="6" r="0.8" fill="currentColor"/><line x1="5" y1="9" x2="5" y2="13" stroke="currentColor" stroke-width="1.2"/><line x1="11" y1="9" x2="11" y2="13" stroke="currentColor" stroke-width="1.2"/></svg>
           </button>
           <button class="icon-btn tab-btn" data-tab="lhs:artifacts" title="Artifacts" aria-label="Artifacts">
@@ -95,18 +98,45 @@
             </div>
           </section>
 
+          <section class="sidebar-pane" data-tab="lhs:worlds">
+            <div class="pane-head">
+              <h2>Worlds</h2>
+              <button id="refresh-worlds" class="ghost mini">Refresh</button>
+            </div>
+            <div class="pane-body">
+              <div class="pane-section">
+                <div class="split-action">
+                  <button id="new-world-menu" class="ghost">+ New World</button>
+                  <div id="new-world-options" class="action-menu" hidden>
+                    <button data-world-type="physical">+ New Physical World</button>
+                    <button data-world-type="virtual">+ New Virtual World</button>
+                  </div>
+                </div>
+                <select id="world-select" hidden aria-hidden="true"></select>
+              </div>
+              <ul id="worlds-list" class="list" aria-label="Worlds"></ul>
+            </div>
+          </section>
+
           <section class="sidebar-pane" data-tab="lhs:robots">
             <div class="pane-head">
-              <h2>Connected arms</h2>
+              <h2>Arms</h2>
               <button id="refresh-robots" class="ghost mini">Refresh</button>
             </div>
             <div class="pane-body">
               <div class="pane-section">
                 <div class="field">
-                  <label for="default-robot">Default robot</label>
+                  <label for="default-robot">Default arm in selected world</label>
                   <div class="field-row">
                     <input id="default-robot" placeholder="mcp_so101" />
                     <button id="set-default-robot" class="ghost">Set</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="virtual-arm-name">New virtual arm</label>
+                  <div class="field-row">
+                    <input id="virtual-arm-name" placeholder="SO-101 sim" />
+                    <button id="create-virtual-arm" class="ghost">Add</button>
                   </div>
                 </div>
               </div>
@@ -211,6 +241,28 @@
       </section>
     </main>
     <script>var exports = {};</script>
+    <div id="world-modal" class="modal-backdrop" hidden>
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="world-modal-title">
+        <div class="modal-head">
+          <h2 id="world-modal-title">New world</h2>
+          <span id="world-modal-kind" class="panel-hint"></span>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="world-modal-name">Name</label>
+            <input id="world-modal-name" placeholder="Bench world" />
+          </div>
+          <div class="field">
+            <label for="world-modal-notes">Notes</label>
+            <textarea id="world-modal-notes" placeholder="Optional local settings notes"></textarea>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="world-modal-cancel" class="ghost">Cancel</button>
+          <button id="world-modal-create" class="primary">Create</button>
+        </div>
+      </section>
+    </div>
     <script src="./renderer.js"></script>
     <script type="importmap">
       {

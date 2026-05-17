@@ -14,11 +14,14 @@ and referenced from `experiment_artifacts`.
 
 ### `create_experiment`
 
-Creates an experiment and a default GPT-5.5 agent session in SQLite.
+Creates an experiment and a default GPT-5.5 agent session in SQLite. Each
+experiment is scoped to one world. If `world_id` is omitted, the experiment
+uses the default physical world.
 
 ```json
 {
   "name": "Bench run",
+  "world_id": "world_physical_default",
   "metadata": {
     "operator": "local"
   }
@@ -56,8 +59,13 @@ Lists local blob references for an experiment.
 ## Robot Selection
 
 Robot motion/state tools accept optional `robot_id`. If omitted or `null`, the
-backend uses the current default robot id. This lets two arms share the same
-servo adapter while the agent still addresses one logical robot at a time.
+backend uses the default robot for the experiment's world. This means an agent
+session only needs `experiment_id`; it does not need to pass `world_id` during
+normal experiment work.
+
+The backend creates `world_physical_default` automatically. When
+`list_connected_robots` detects a real arm, the backend assigns it to that
+default physical world unless the operator later moves it.
 
 Robot-aware tools:
 
@@ -74,20 +82,154 @@ Robot-aware tools:
 
 ### `set_default_robot`
 
-Sets the backend default robot id for subsequent robot-aware tools.
+Sets the default robot id for a world. If `world_id` is omitted but
+`experiment_id` is provided, the experiment world is used.
 
 ```json
 {
-  "robot_id": "left_arm"
+  "robot_id": "left_arm",
+  "world_id": "world_physical_default"
 }
 ```
 
 ### `get_default_robot`
 
-Returns the current default robot id, or `null`.
+Returns the default robot id for a world, or `null`.
+
+```json
+{
+  "world_id": "world_physical_default"
+}
+```
+
+## Worlds
+
+### `list_worlds`
+
+Lists physical and virtual worlds, robot assignments, and virtual entities.
 
 ```json
 {}
+```
+
+### `create_world`
+
+Creates a physical or virtual world.
+
+```json
+{
+  "name": "Sim bench A",
+  "type": "virtual"
+}
+```
+
+### `delete_world`
+
+Deletes a world that has no experiments. The default physical world is
+protected.
+
+```json
+{
+  "world_id": "world_..."
+}
+```
+
+### `update_world`
+
+Updates world settings such as name and metadata.
+
+```json
+{
+  "world_id": "world_...",
+  "name": "Sim bench B",
+  "metadata": {
+    "notes": "local simulator workspace"
+  }
+}
+```
+
+### `assign_robot_to_world`
+
+Assigns a physical robot to a physical world, or a virtual robot to a virtual
+world. Use `make_default` to make that robot the world's default.
+
+```json
+{
+  "robot_id": "sim_so101_a",
+  "world_id": "world_...",
+  "robot_kind": "virtual",
+  "make_default": true
+}
+```
+
+### `list_virtual_entities`
+
+Lists virtual arms, cameras, and rigid bodies. Pass `world_id` to filter to one
+virtual world.
+
+```json
+{
+  "world_id": "world_..."
+}
+```
+
+### `create_virtual_arm`
+
+Places a virtual SO-101 arm in a virtual world and registers it as a virtual
+robot. The arm entity is created with collision enabled and `collision_mode:
+"full"` so a simulator can include it in collision checks against virtual rigid
+bodies.
+
+```json
+{
+  "world_id": "world_...",
+  "name": "SO-101 sim A",
+  "make_default": true,
+  "pose": { "x": 0, "y": 0, "z": 0, "roll": 0, "pitch": 0, "yaw": 0 },
+  "spec": { "collision_mode": "full", "collides_with": ["rigid_body"] }
+}
+```
+
+### `create_virtual_camera`
+
+Places a virtual camera in a virtual world.
+
+```json
+{
+  "world_id": "world_...",
+  "name": "Overhead camera",
+  "pose": { "x": 0.35, "y": -0.35, "z": 0.45, "roll": 0, "pitch": -35, "yaw": 45 }
+}
+```
+
+### `create_virtual_rigid_body`
+
+Places a virtual rigid body in a virtual world. Collision is enabled by default;
+provide the collision shape, dimensions, and mass through `spec`.
+
+```json
+{
+  "world_id": "world_...",
+  "name": "Vial rack block",
+  "pose": { "x": 0.18, "y": 0, "z": 0.03, "roll": 0, "pitch": 0, "yaw": 0 },
+  "spec": {
+    "mass_kg": 0.1,
+    "collision_shape": "box",
+    "dimensions_m": [0.05, 0.05, 0.05],
+    "collision_mode": "full",
+    "collides_with": ["arm", "rigid_body"]
+  }
+}
+```
+
+### `delete_virtual_entity`
+
+Deletes a virtual arm, camera, or rigid body.
+
+```json
+{
+  "entity_id": "body_..."
+}
 ```
 
 ## Discovery

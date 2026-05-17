@@ -14,6 +14,7 @@ export type AgentSessionEventType =
 
 export interface Experiment {
   id: string;
+  world_id: string;
   name: string;
   status: string;
   created_at: string;
@@ -24,8 +25,47 @@ export interface Experiment {
 export interface AgentSession {
   id: string;
   experiment_id: string;
+  world_id: string;
   model: string;
   status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorldType = "physical" | "virtual";
+
+export interface World {
+  id: string;
+  name: string;
+  type: WorldType;
+  status: string;
+  default_robot_id: string | null;
+  created_at: string;
+  updated_at: string;
+  metadata: JsonObject;
+}
+
+export type RobotKind = "physical" | "virtual";
+
+export interface RobotWorldAssignment {
+  robot_id: string;
+  world_id: string;
+  robot_kind: RobotKind;
+  port: string | null;
+  metadata: JsonObject;
+  updated_at: string;
+}
+
+export type VirtualEntityKind = "arm" | "camera" | "rigid_body";
+
+export interface VirtualWorldEntity {
+  id: string;
+  world_id: string;
+  kind: VirtualEntityKind;
+  name: string;
+  pose: JsonObject;
+  spec: JsonObject;
+  collision_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

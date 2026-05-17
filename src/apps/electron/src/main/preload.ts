@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld("chem0", {
   readResource: (uri: string) => ipcRenderer.invoke("chem0:resource-read", uri),
   readUrdf: () => ipcRenderer.invoke("chem0:urdf-read"),
   callTool: (name: string, args: JsonObject = {}) => ipcRenderer.invoke("chem0:tool-call", name, args),
-  createExperiment: (name: string, metadata: JsonObject = {}) => ipcRenderer.invoke("chem0:create-experiment", name, metadata),
+  createExperiment: (name: string, metadata: JsonObject = {}, worldId?: string) =>
+    ipcRenderer.invoke("chem0:create-experiment", name, metadata, worldId),
   listExperiments: () => ipcRenderer.invoke("chem0:list-experiments"),
   listEvents: (experimentId: string) => ipcRenderer.invoke("chem0:list-events", experimentId),
   listArtifacts: (experimentId: string) => ipcRenderer.invoke("chem0:list-artifacts", experimentId),

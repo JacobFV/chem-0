@@ -10,7 +10,7 @@ declare global {
       readResource: (uri: string) => Promise<JsonObject>;
       readUrdf: () => Promise<JsonObject>;
       callTool: (name: string, args?: JsonObject) => Promise<JsonObject>;
-      createExperiment: (name: string, metadata?: JsonObject) => Promise<JsonObject>;
+      createExperiment: (name: string, metadata?: JsonObject, worldId?: string) => Promise<JsonObject>;
       listExperiments: () => Promise<JsonObject>;
       listEvents: (experimentId: string) => Promise<JsonObject>;
       listArtifacts: (experimentId: string) => Promise<JsonObject>;
@@ -39,10 +39,24 @@ const experimentSelect = document.querySelector<HTMLSelectElement>("#experiment"
 const experimentName = document.querySelector<HTMLInputElement>("#experiment-name")!;
 const experimentsList = document.querySelector<HTMLUListElement>("#experiments-list")!;
 const robotsList = document.querySelector<HTMLUListElement>("#robots-list")!;
+const worldsList = document.querySelector<HTMLUListElement>("#worlds-list")!;
 const artifactsList = document.querySelector<HTMLUListElement>("#artifacts-list")!;
 const experimentMeta = document.querySelector<HTMLPreElement>("#experiment-meta")!;
 const experimentNotes = document.querySelector<HTMLTextAreaElement>("#experiment-notes")!;
 const defaultRobotInput = document.querySelector<HTMLInputElement>("#default-robot")!;
+const worldSelect = document.querySelector<HTMLSelectElement>("#world-select")!;
+const newWorldMenuBtn = document.querySelector<HTMLButtonElement>("#new-world-menu")!;
+const newWorldOptions = document.querySelector<HTMLDivElement>("#new-world-options")!;
+const worldModal = document.querySelector<HTMLDivElement>("#world-modal")!;
+const worldModalTitle = document.querySelector<HTMLHeadingElement>("#world-modal-title")!;
+const worldModalKind = document.querySelector<HTMLSpanElement>("#world-modal-kind")!;
+const worldModalName = document.querySelector<HTMLInputElement>("#world-modal-name")!;
+const worldModalNotes = document.querySelector<HTMLTextAreaElement>("#world-modal-notes")!;
+const worldModalCancel = document.querySelector<HTMLButtonElement>("#world-modal-cancel")!;
+const worldModalCreate = document.querySelector<HTMLButtonElement>("#world-modal-create")!;
+const refreshWorldsBtn = document.querySelector<HTMLButtonElement>("#refresh-worlds")!;
+const virtualArmNameInput = document.querySelector<HTMLInputElement>("#virtual-arm-name")!;
+const createVirtualArmBtn = document.querySelector<HTMLButtonElement>("#create-virtual-arm")!;
 const setDefaultRobot = document.querySelector<HTMLButtonElement>("#set-default-robot")!;
 const refreshRobotsBtn = document.querySelector<HTMLButtonElement>("#refresh-robots")!;
 const refreshArtifactsBtn = document.querySelector<HTMLButtonElement>("#refresh-artifacts")!;
@@ -69,10 +83,17 @@ const camStreams: (MediaStream | null)[] = [null, null, null];
 let experimentId = "";
 let sessionId = "";
 let defaultRobotId = "";
+let selectedWorldId = "world_physical_default";
 let assistantBubble: HTMLDivElement | null = null;
 let mediaRecorder: MediaRecorder | null = null;
 let recordedChunks: BlobPart[] = [];
 let experimentsCache: JsonObject[] = [];
+let worldsCache: JsonObject[] = [];
+let assignmentsCache: JsonObject[] = [];
+let virtualEntitiesCache: JsonObject[] = [];
+let worldModalMode: "create" | "edit" = "create";
+let worldModalType: "physical" | "virtual" = "physical";
+let worldModalWorldId = "";
 
 type PhSample = { value: number; timestamp: number };
 const phSamples: PhSample[] = [];
@@ -96,6 +117,9 @@ function withExperiment(args: JsonObject = {}): JsonObject {
 function setActive(experiment: JsonObject, session?: JsonObject): void {
   experimentId = String(experiment.id ?? "");
   sessionId = String(session?.id ?? sessionId);
+  selectedWorldId = String(experiment.world_id ?? selectedWorldId);
+  worldSelect.value = selectedWorldId;
+  syncSelectedWorldState();
   setActiveExperimentLabel(
     experimentId ? `${String(experiment.name ?? "Experiment")} · ${experimentId}` : "No experiment",
     Boolean(experimentId)
@@ -276,6 +300,206 @@ function renderExperimentsList(): void {
   }
 }
 
+function selectedWorld(): JsonObject | undefined {
+  return worldsCache.find((world) => String(world.id) === selectedWorldId);
+}
+
+function syncSelectedWorldState(): void {
+  const world = selectedWorld();
+  defaultRobotId = typeof world?.default_robot_id === "string" ? world.default_robot_id : "";
+  defaultRobotInput.value = defaultRobotId;
+  worldSelect.value = selectedWorldId;
+  const isVirtual = world?.type === "virtual";
+  createVirtualArmBtn.disabled = !isVirtual;
+  for (const li of worldsList.querySelectorAll<HTMLLIElement>(".list-item")) {
+    li.classList.toggle("active", li.dataset.worldId === selectedWorldId);
+  }
+}
+
+function worldAssignments(worldId: string): JsonObject[] {
+  return assignmentsCache.filter((item) => String(item.world_id) === worldId);
+}
+
+function worldEntities(worldId: string): JsonObject[] {
+  return virtualEntitiesCache.filter((entity) => String(entity.world_id) === worldId);
+}
+
+async function createVirtualCameraInWorld(worldId: string): Promise<void> {
+  const result = await window.chem0.callTool("create_virtual_camera", {
+    world_id: worldId,
+    name: `Camera ${worldEntities(worldId).filter((entity) => entity.kind === "camera").length + 1}`,
+    pose: { x: 0.35, y: -0.35, z: 0.45, roll: 0, pitch: -35, yaw: 45 },
+    spec: { resolution: "1280x720", fov_degrees: 60 }
+  });
+  show(result);
+  await refreshWorlds();
+}
+
+async function createVirtualRigidBodyInWorld(worldId: string): Promise<void> {
+  const result = await window.chem0.callTool("create_virtual_rigid_body", {
+    world_id: worldId,
+    name: `Object ${worldEntities(worldId).filter((entity) => entity.kind === "rigid_body").length + 1}`,
+    pose: { x: 0.18, y: 0, z: 0.03, roll: 0, pitch: 0, yaw: 0 },
+    spec: {
+      mass_kg: 0.1,
+      collision_shape: "box",
+      dimensions_m: [0.05, 0.05, 0.05],
+      collision_mode: "full",
+      collides_with: ["arm", "rigid_body"]
+    },
+    collision_enabled: true
+  });
+  show(result);
+  await refreshWorlds();
+}
+
+function appendWorldContents(li: HTMLLIElement, world: JsonObject): void {
+  if (String(world.id) !== selectedWorldId) return;
+  const worldId = String(world.id);
+  const expanded = document.createElement("div");
+  expanded.className = "world-expanded";
+  const assignments = worldAssignments(worldId);
+  const entities = worldEntities(worldId);
+
+  const sections: Array<{ label: string; items: string[]; action?: { label: string; run: () => void } }> = [
+    {
+      label: "arms",
+      items: assignments.map((item) => `${String(item.robot_id)} · ${String(item.robot_kind)}`)
+    }
+  ];
+  if (world.type === "virtual") {
+    sections.push({
+      label: "cameras",
+      items: entities.filter((entity) => entity.kind === "camera").map((entity) => String(entity.name ?? entity.id)),
+      action: { label: "+ Cam", run: () => void createVirtualCameraInWorld(worldId) }
+    });
+    sections.push({
+      label: "objects",
+      items: entities
+        .filter((entity) => entity.kind === "rigid_body")
+        .map((entity) => `${String(entity.name ?? entity.id)} · ${entity.collision_enabled ? "collision" : "passive"}`),
+      action: { label: "+ Object", run: () => void createVirtualRigidBodyInWorld(worldId) }
+    });
+  }
+
+  for (const section of sections) {
+    const block = document.createElement("div");
+    block.className = "world-section";
+    const head = document.createElement("div");
+    head.className = "world-section-head";
+    const label = document.createElement("div");
+    label.className = "world-section-label";
+    label.textContent = section.label;
+    head.append(label);
+    if (section.action) {
+      const action = document.createElement("button");
+      action.className = "ghost mini";
+      action.textContent = section.action.label;
+      action.addEventListener("click", (event) => {
+        event.stopPropagation();
+        section.action?.run();
+      });
+      head.append(action);
+    }
+    block.append(head);
+    if (section.items.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "world-section-empty";
+      empty.textContent = "none";
+      block.append(empty);
+    } else {
+      for (const item of section.items) {
+        const row = document.createElement("div");
+        row.className = "world-section-row";
+        row.textContent = item;
+        block.append(row);
+      }
+    }
+    expanded.append(block);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "world-actions";
+  const edit = document.createElement("button");
+  edit.className = "ghost mini";
+  edit.textContent = "Edit";
+  edit.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openWorldModal("edit", String(world.type) === "virtual" ? "virtual" : "physical", world);
+  });
+  const del = document.createElement("button");
+  del.className = "ghost mini";
+  del.textContent = "Delete";
+  del.disabled = worldId === "world_physical_default";
+  del.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    if (del.disabled) return;
+    try {
+      show(await window.chem0.callTool("delete_world", { world_id: worldId }));
+      selectedWorldId = "world_physical_default";
+      await refreshWorlds();
+      void refreshRobots();
+    } catch (error) {
+      show({ delete_world_error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+  actions.append(edit, del);
+  expanded.append(actions);
+  li.append(expanded);
+}
+
+function renderWorldsList(): void {
+  worldsList.replaceChildren();
+  worldSelect.replaceChildren();
+  if (worldsCache.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "list-empty";
+    empty.textContent = "No worlds found.";
+    worldsList.append(empty);
+    return;
+  }
+  for (const world of worldsCache) {
+    const id = String(world.id);
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = `${String(world.name ?? id)} · ${String(world.type ?? "world")}`;
+    worldSelect.append(option);
+
+    const li = document.createElement("li");
+    li.className = "list-item";
+    li.dataset.worldId = id;
+    if (id === selectedWorldId) li.classList.add("active");
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = String(world.name ?? id);
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    const defaultRobot = world.default_robot_id ? `default ${String(world.default_robot_id)}` : "no default arm";
+    sub.textContent = `${String(world.type ?? "world")} · ${defaultRobot}`;
+    li.append(title, sub);
+    appendWorldContents(li, world);
+    li.addEventListener("click", () => {
+      selectedWorldId = id;
+      syncSelectedWorldState();
+      renderWorldsList();
+      void refreshRobots();
+    });
+    worldsList.append(li);
+  }
+  syncSelectedWorldState();
+}
+
+async function refreshWorlds(): Promise<void> {
+  const result = await window.chem0.callTool("list_worlds", {});
+  worldsCache = (result.worlds ?? []) as JsonObject[];
+  assignmentsCache = (result.assignments ?? []) as JsonObject[];
+  virtualEntitiesCache = (result.virtual_entities ?? []) as JsonObject[];
+  if (!worldsCache.some((world) => String(world.id) === selectedWorldId)) {
+    selectedWorldId = String(worldsCache[0]?.id ?? "world_physical_default");
+  }
+  renderWorldsList();
+}
+
 function updateExperimentsListSelection(): void {
   for (const li of experimentsList.querySelectorAll<HTMLLIElement>(".list-item")) {
     li.classList.toggle("active", li.dataset.experimentId === experimentId);
@@ -371,27 +595,53 @@ async function refreshRobots(): Promise<void> {
   robotsList.replaceChildren();
   try {
     const result = await window.chem0.callTool("list_connected_robots", { max_id: 12 });
+    await refreshWorlds();
     let parsed: JsonObject = {};
     try { parsed = JSON.parse(textFromTool(result)) as JsonObject; } catch { parsed = result; }
     const robots = (parsed.robots ?? []) as JsonObject[];
-    if (!Array.isArray(robots) || robots.length === 0) {
+    const assignedOnly = assignmentsCache.filter((item) => String(item.world_id) === selectedWorldId);
+    if ((!Array.isArray(robots) || robots.length === 0) && assignedOnly.length === 0) {
       const empty = document.createElement("li");
       empty.className = "list-empty";
-      empty.textContent = "No arms detected. Plug one in and refresh.";
+      empty.textContent = "No arms detected or assigned. Type a virtual arm id above for virtual worlds.";
       robotsList.append(empty);
       return;
     }
+    const renderedRobotIds = new Set<string>();
     for (const robot of robots) {
       const li = document.createElement("li");
       li.className = "list-item";
       const robotId = String(robot.suggested_robot_id ?? robot.robot_id ?? "so101");
+      renderedRobotIds.add(robotId);
+      const assignment = assignmentsCache.find((item) => String(item.robot_id) === robotId);
+      const assignedWorldId = String(assignment?.world_id ?? "world_physical_default");
       if (robotId === defaultRobotId) li.classList.add("active");
       const title = document.createElement("div");
       title.className = "title";
       title.textContent = robotId;
       const sub = document.createElement("div");
       sub.className = "sub";
-      sub.textContent = `${String(robot.port ?? "?")} · ${robot.looks_like_so101 ? "so101" : "unknown"}`;
+      const worldName = worldsCache.find((world) => String(world.id) === assignedWorldId)?.name ?? assignedWorldId;
+      sub.textContent = `${String(robot.port ?? "?")} · ${robot.looks_like_so101 ? "so101" : "unknown"} · ${String(worldName)}`;
+      li.append(title, sub);
+      li.addEventListener("click", () => {
+        defaultRobotInput.value = robotId;
+        void assignRobotToSelectedWorld(robot, true);
+      });
+      robotsList.append(li);
+    }
+    for (const assignment of assignedOnly) {
+      const robotId = String(assignment.robot_id ?? "");
+      if (!robotId || renderedRobotIds.has(robotId)) continue;
+      const li = document.createElement("li");
+      li.className = "list-item";
+      if (robotId === defaultRobotId) li.classList.add("active");
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = robotId;
+      const sub = document.createElement("div");
+      sub.className = "sub";
+      sub.textContent = `${String(assignment.robot_kind ?? "robot")} · assigned`;
       li.append(title, sub);
       li.addEventListener("click", () => {
         defaultRobotInput.value = robotId;
@@ -407,11 +657,100 @@ async function refreshRobots(): Promise<void> {
   }
 }
 
+async function assignRobotToSelectedWorld(robot: JsonObject, makeDefault: boolean): Promise<void> {
+  const robotId = String(robot.suggested_robot_id ?? robot.robot_id ?? defaultRobotInput.value).trim();
+  if (!robotId) return;
+  try {
+    const result = await window.chem0.callTool("assign_robot_to_world", {
+      robot_id: robotId,
+      world_id: selectedWorldId,
+      robot_kind: "physical",
+      port: typeof robot.port === "string" ? robot.port : null,
+      make_default: makeDefault,
+      metadata: {
+        looks_like_so101: robot.looks_like_so101 === true,
+        servo_ids: Array.isArray(robot.servo_ids) ? robot.servo_ids : []
+      }
+    });
+    show(result);
+    await refreshWorlds();
+    void refreshRobots();
+  } catch (error) {
+    show({ assign_robot_error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 async function applyDefaultRobot(robotId: string): Promise<void> {
-  const result = await window.chem0.callTool("set_default_robot", { robot_id: robotId });
+  const world = selectedWorld();
+  const worldType = String(world?.type ?? "physical");
+  await window.chem0.callTool("assign_robot_to_world", {
+    robot_id: robotId,
+    world_id: selectedWorldId,
+    robot_kind: worldType === "virtual" ? "virtual" : "physical",
+    make_default: true,
+    metadata: { source: "manual" }
+  });
+  const result = await window.chem0.callTool("set_default_robot", { robot_id: robotId, world_id: selectedWorldId });
   defaultRobotId = String(result.robot_id ?? robotId);
   defaultRobotInput.value = defaultRobotId;
   show(result);
+  await refreshWorlds();
+  void refreshRobots();
+}
+
+async function createVirtualArm(): Promise<void> {
+  if (selectedWorld()?.type !== "virtual") {
+    show("Select a virtual world before creating a virtual arm.");
+    return;
+  }
+  const result = await window.chem0.callTool("create_virtual_arm", {
+    world_id: selectedWorldId,
+    name: virtualArmNameInput.value.trim() || "Virtual SO-101",
+    make_default: true,
+    pose: { x: 0, y: 0, z: 0, roll: 0, pitch: 0, yaw: 0 },
+    spec: { model: "so101", collision_mode: "full", collides_with: ["rigid_body"] }
+  });
+  virtualArmNameInput.value = "";
+  show(result);
+  await refreshWorlds();
+  void refreshRobots();
+}
+
+function openWorldModal(mode: "create" | "edit", type: "physical" | "virtual", world?: JsonObject): void {
+  worldModalMode = mode;
+  worldModalType = type;
+  worldModalWorldId = world ? String(world.id ?? "") : "";
+  worldModalTitle.textContent = mode === "edit" ? "Edit world" : "New world";
+  worldModalKind.textContent = type;
+  worldModalCreate.textContent = mode === "edit" ? "Save" : "Create";
+  worldModalName.value = String(world?.name ?? (type === "virtual" ? "Virtual world" : "Physical world"));
+  const metadata = (world?.metadata ?? {}) as JsonObject;
+  worldModalNotes.value = typeof metadata.notes === "string" ? metadata.notes : "";
+  worldModal.hidden = false;
+  worldModalName.focus();
+  worldModalName.select();
+}
+
+function closeWorldModal(): void {
+  worldModal.hidden = true;
+  worldModalWorldId = "";
+}
+
+async function submitWorldModal(): Promise<void> {
+  const name = worldModalName.value.trim() || (worldModalType === "virtual" ? "Virtual world" : "Physical world");
+  const metadata: JsonObject = {};
+  if (worldModalNotes.value.trim()) metadata.notes = worldModalNotes.value.trim();
+  if (worldModalMode === "create") {
+    const result = await window.chem0.callTool("create_world", { name, type: worldModalType, metadata });
+    const world = result.world as JsonObject | undefined;
+    if (world?.id) selectedWorldId = String(world.id);
+    show(result);
+  } else {
+    const result = await window.chem0.callTool("update_world", { world_id: worldModalWorldId, name, metadata });
+    show(result);
+  }
+  closeWorldModal();
+  await refreshWorlds();
   void refreshRobots();
 }
 
@@ -549,8 +888,9 @@ updateToggleButtonStates();
 /* --------------------------- boot & actions --------------------------- */
 
 async function boot(): Promise<void> {
-  const [tools] = await Promise.all([window.chem0.listTools(), refreshExperiments()]);
-  const defaultRobot = await window.chem0.callTool("get_default_robot", {});
+  const [tools] = await Promise.all([window.chem0.listTools(), refreshWorlds()]);
+  await refreshExperiments();
+  const defaultRobot = await window.chem0.callTool("get_default_robot", { world_id: selectedWorldId });
   defaultRobotId = typeof defaultRobot.robot_id === "string" ? defaultRobot.robot_id : "";
   defaultRobotInput.value = defaultRobotId;
   show(tools);
@@ -563,7 +903,11 @@ async function boot(): Promise<void> {
 
 document.querySelector("#create-experiment")?.addEventListener("click", async () => {
   try {
-    const result = await window.chem0.createExperiment(experimentName.value.trim() || "Untitled experiment", { app: "electron" });
+    const result = await window.chem0.createExperiment(
+      experimentName.value.trim() || "Untitled experiment",
+      { app: "electron" },
+      selectedWorldId
+    );
     show(result);
     setActive(result.experiment as JsonObject, result.session as JsonObject);
     await refreshExperiments();
@@ -576,9 +920,49 @@ document.querySelector("#create-experiment")?.addEventListener("click", async ()
   }
 });
 
+worldSelect.addEventListener("change", () => {
+  selectedWorldId = worldSelect.value;
+  syncSelectedWorldState();
+  void refreshRobots();
+});
+refreshWorldsBtn.addEventListener("click", async () => {
+  await refreshWorlds();
+  void refreshRobots();
+});
+
+newWorldMenuBtn.addEventListener("click", () => {
+  newWorldOptions.hidden = !newWorldOptions.hidden;
+});
+for (const btn of newWorldOptions.querySelectorAll<HTMLButtonElement>("button[data-world-type]")) {
+  btn.addEventListener("click", () => {
+    const type = btn.dataset.worldType === "virtual" ? "virtual" : "physical";
+    newWorldOptions.hidden = true;
+    openWorldModal("create", type);
+  });
+}
+document.addEventListener("click", (event) => {
+  const target = event.target as Node | null;
+  if (!target || newWorldOptions.hidden) return;
+  if (newWorldOptions.contains(target) || newWorldMenuBtn.contains(target)) return;
+  newWorldOptions.hidden = true;
+});
+worldModalCancel.addEventListener("click", closeWorldModal);
+worldModalCreate.addEventListener("click", () => void submitWorldModal());
+worldModal.addEventListener("click", (event) => {
+  if (event.target === worldModal) closeWorldModal();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !worldModal.hidden) closeWorldModal();
+});
+
+createVirtualArmBtn.addEventListener("click", () => void createVirtualArm());
+
 experimentSelect.addEventListener("change", async () => {
   experimentId = experimentSelect.value;
   sessionId = "";
+  const experiment = experimentsCache.find((item) => String(item.id) === experimentId);
+  if (experiment) selectedWorldId = String(experiment.world_id ?? selectedWorldId);
+  syncSelectedWorldState();
   setActiveExperimentLabel(experimentId || "No experiment", Boolean(experimentId));
   updateExperimentsListSelection();
   updateNotesPane();

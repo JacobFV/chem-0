@@ -226,8 +226,8 @@ ipcMain.handle("chem0:urdf-read", async () => ({
   text: fs.readFileSync(path.join(repoRoot, "assets/kinematics/so101_kinematics.urdf"), "utf8")
 }));
 ipcMain.handle("chem0:tool-call", async (_event, name: string, args: JsonObject) => backend.callTool(name, args));
-ipcMain.handle("chem0:create-experiment", async (_event, name: string, metadata: JsonObject = {}) =>
-  backend.createExperiment(name, metadata)
+ipcMain.handle("chem0:create-experiment", async (_event, name: string, metadata: JsonObject = {}, worldId?: string) =>
+  backend.createExperiment(name, metadata, typeof worldId === "string" && worldId.trim() ? worldId : undefined)
 );
 ipcMain.handle("chem0:list-experiments", async () => ({ experiments: backend.listExperiments() as unknown as JsonObject[] }));
 ipcMain.handle("chem0:list-events", async (_event, experimentId: string) => ({

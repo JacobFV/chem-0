@@ -5,8 +5,8 @@ import process from "node:process";
 import OpenAI from "openai";
 import { AudioService } from "./audio";
 import { PythonBridge } from "./pythonBridge";
-import { Chem0Store } from "./store";
-import type { Experiment, JsonObject } from "./types";
+import { Chem0Store, DEFAULT_PHYSICAL_WORLD_ID } from "./store";
+import type { Experiment, JsonObject, RobotKind, WorldType } from "./types";
 
 const DEFAULT_MODEL = "gpt-5.5";
 const MAX_AGENT_STEPS = 8;
@@ -28,7 +28,6 @@ export class Chem0Backend extends EventEmitter {
   readonly bridge: PythonBridge;
   readonly audio: AudioService;
   private initialized = false;
-  private defaultRobotId: string | null = null;
 
   constructor(readonly repoRoot: string, dataDir = path.join(repoRoot, "data")) {
     super();
@@ -67,10 +66,123 @@ export class Chem0Backend extends EventEmitter {
   async callTool(name: string, args: JsonObject = {}): Promise<JsonObject> {
     await this.init();
     if (name === "create_experiment") {
-      return this.createExperiment(String(args.name ?? "Untitled experiment"), (args.metadata as JsonObject) ?? {});
+      const worldId = typeof args.world_id === "string" && args.world_id.trim() ? args.world_id : DEFAULT_PHYSICAL_WORLD_ID;
+      return this.createExperiment(String(args.name ?? "Untitled experiment"), (args.metadata as JsonObject) ?? {}, worldId);
     }
     if (name === "list_experiments") {
       return { experiments: this.store.listExperiments() as unknown as JsonObject[] };
+    }
+    if (name === "list_worlds") {
+      return {
+        worlds: this.store.listWorlds() as unknown as JsonObject[],
+        assignments: this.store.listRobotWorldAssignments() as unknown as JsonObject[],
+        virtual_entities: this.store.listVirtualEntities() as unknown as JsonObject[]
+      };
+    }
+    if (name === "create_world") {
+      return {
+        world: this.store.createWorld({
+          name: String(args.name ?? ""),
+          type: String(args.type ?? "physical") as WorldType,
+          metadata: (args.metadata as JsonObject) ?? {}
+        }) as unknown as JsonObject
+      };
+    }
+    if (name === "update_world") {
+      return {
+        world: this.store.updateWorld({
+          worldId: String(args.world_id ?? ""),
+          name: typeof args.name === "string" ? args.name : undefined,
+          metadata: (args.metadata as JsonObject) ?? undefined
+        }) as unknown as JsonObject
+      };
+    }
+    if (name === "delete_world") {
+      const worldId = String(args.world_id ?? "").trim();
+      if (!worldId) throw new Error("delete_world requires world_id.");
+      this.store.deleteWorld(worldId);
+      return { ok: true, world_id: worldId };
+    }
+    if (name === "assign_robot_to_world") {
+      return {
+        assignment: this.store.assignRobotToWorld({
+          robotId: String(args.robot_id ?? ""),
+          worldId: String(args.world_id ?? ""),
+          robotKind: String(args.robot_kind ?? "physical") as RobotKind,
+          port: typeof args.port === "string" ? args.port : null,
+          metadata: (args.metadata as JsonObject) ?? {},
+          makeDefault: args.make_default === true
+        }) as unknown as JsonObject
+      };
+    }
+    if (name === "list_virtual_entities") {
+      const worldId = typeof args.world_id === "string" && args.world_id.trim() ? args.world_id : undefined;
+      return { entities: this.store.listVirtualEntities(worldId) as unknown as JsonObject[] };
+    }
+    if (name === "create_virtual_arm") {
+      const entity = this.store.createVirtualEntity({
+        worldId: String(args.world_id ?? ""),
+        kind: "arm",
+        name: String(args.name ?? "Virtual SO-101"),
+        pose: (args.pose as JsonObject) ?? {},
+        spec: {
+          model: typeof args.model === "string" ? args.model : "so101",
+          collision_shape: "so101_urdf",
+          collision_mode: "full",
+          collides_with: ["rigid_body"],
+          ...(args.spec && typeof args.spec === "object" && !Array.isArray(args.spec) ? (args.spec as JsonObject) : {})
+        },
+        collisionEnabled: true
+      });
+      const assignment = this.store.assignRobotToWorld({
+        robotId: entity.id,
+        worldId: entity.world_id,
+        robotKind: "virtual",
+        metadata: { entity_id: entity.id, model: entity.spec.model ?? "so101", collision_mode: "full" },
+        makeDefault: args.make_default === true
+      });
+      return { entity: entity as unknown as JsonObject, assignment: assignment as unknown as JsonObject };
+    }
+    if (name === "create_virtual_camera") {
+      return {
+        entity: this.store.createVirtualEntity({
+          worldId: String(args.world_id ?? ""),
+          kind: "camera",
+          name: String(args.name ?? "Virtual camera"),
+          pose: (args.pose as JsonObject) ?? {},
+          spec: {
+            resolution: "1280x720",
+            fov_degrees: 60,
+            ...(args.spec && typeof args.spec === "object" && !Array.isArray(args.spec) ? (args.spec as JsonObject) : {})
+          },
+          collisionEnabled: false
+        }) as unknown as JsonObject
+      };
+    }
+    if (name === "create_virtual_rigid_body") {
+      return {
+        entity: this.store.createVirtualEntity({
+          worldId: String(args.world_id ?? ""),
+          kind: "rigid_body",
+          name: String(args.name ?? "Rigid body"),
+          pose: (args.pose as JsonObject) ?? {},
+          spec: {
+            mass_kg: 0.1,
+            collision_shape: "box",
+            dimensions_m: [0.05, 0.05, 0.05],
+            collision_mode: "full",
+            collides_with: ["arm", "rigid_body"],
+            ...(args.spec && typeof args.spec === "object" && !Array.isArray(args.spec) ? (args.spec as JsonObject) : {})
+          },
+          collisionEnabled: args.collision_enabled !== false
+        }) as unknown as JsonObject
+      };
+    }
+    if (name === "delete_virtual_entity") {
+      const entityId = String(args.entity_id ?? "").trim();
+      if (!entityId) throw new Error("delete_virtual_entity requires entity_id.");
+      this.store.deleteVirtualEntity(entityId);
+      return { ok: true, entity_id: entityId };
     }
     if (name === "list_agent_session_events") {
       return { events: this.store.listEvents(String(args.experiment_id)) as unknown as JsonObject[] };
@@ -81,11 +193,13 @@ export class Chem0Backend extends EventEmitter {
     if (name === "set_default_robot") {
       const robotId = String(args.robot_id ?? "").trim();
       if (!robotId) throw new Error("set_default_robot requires robot_id.");
-      this.defaultRobotId = robotId;
-      return { robot_id: robotId };
+      const worldId = this.worldIdForArgs(args);
+      this.store.setDefaultRobotForWorld(worldId, robotId);
+      return { robot_id: robotId, world_id: worldId };
     }
     if (name === "get_default_robot") {
-      return { robot_id: this.defaultRobotId };
+      const worldId = this.worldIdForArgs(args);
+      return { robot_id: this.store.getWorld(worldId)?.default_robot_id ?? null, world_id: worldId };
     }
     if (name === "record_ph") {
       const value = Number(args.value);
@@ -121,10 +235,12 @@ export class Chem0Backend extends EventEmitter {
     const experimentId = typeof args.experiment_id === "string" ? args.experiment_id : undefined;
     const cleanArgs = this.withRobotId(name, { ...args });
     delete cleanArgs.experiment_id;
+    delete cleanArgs.world_id;
     if (experimentId) {
       this.store.appendEvent({ experimentId, type: "tool_call", name, content: { arguments: cleanArgs } });
     }
     const result = await this.executeTool(name, cleanArgs);
+    if (name === "list_connected_robots") this.recordDetectedPhysicalRobots(result);
     if (experimentId) {
       const enriched = this.persistArtifacts(experimentId, name, result);
       this.store.appendEvent({ experimentId, type: "tool_response", name, content: enriched });
@@ -133,8 +249,8 @@ export class Chem0Backend extends EventEmitter {
     return result;
   }
 
-  createExperiment(name: string, metadata: JsonObject = {}): JsonObject {
-    const experiment = this.store.createExperiment(name, metadata);
+  createExperiment(name: string, metadata: JsonObject = {}, worldId = DEFAULT_PHYSICAL_WORLD_ID): JsonObject {
+    const experiment = this.store.createExperiment(name, metadata, worldId);
     const session = this.store.createSession(experiment.id, DEFAULT_MODEL);
     this.store.appendEvent({
       experimentId: experiment.id,
@@ -172,7 +288,7 @@ export class Chem0Backend extends EventEmitter {
     try {
       let text = "";
       const instructions =
-        "You are controlling a local LeRobot experiment through chem-0. Use tools when hardware state, camera state, arm motion, or human voice interaction is required. Use speak_to_human to talk out loud. Treat listen_to_human transcripts as human messages. When you observe a universal-indicator color in a camera frame, estimate the pH and call record_ph(value) so the operator's real-time chart updates. Keep motions conservative and prefer known pose-table references.";
+        "You are controlling a local LeRobot experiment through chem-0. Your agent session is scoped to one world through the experiment; do not ask the user for world_id or pass world_id to tools unless explicitly changing world management. Use tools when hardware state, camera state, arm motion, or human voice interaction is required. Use speak_to_human to talk out loud. Treat listen_to_human transcripts as human messages. When you observe a universal-indicator color in a camera frame, estimate the pH and call record_ph(value) so the operator's real-time chart updates. Keep motions conservative and prefer known pose-table references.";
       let nextInput: unknown = this.sessionMessages(input.experimentId, sessionId);
       let previousResponseId: string | undefined;
       const tools = await this.openAiTools();
@@ -357,9 +473,55 @@ export class Chem0Backend extends EventEmitter {
   private withRobotId(name: string, args: JsonObject): JsonObject {
     if (!ROBOT_TOOL_NAMES.has(name)) return args;
     if (typeof args.robot_id === "string" && args.robot_id.trim()) return args;
-    if (this.defaultRobotId) return { ...args, robot_id: this.defaultRobotId };
+    const worldId = this.worldIdForArgs(args);
+    const robotId = this.store.getWorld(worldId)?.default_robot_id;
+    if (robotId) return { ...args, robot_id: robotId };
     delete args.robot_id;
     return args;
+  }
+
+  private worldIdForArgs(args: JsonObject): string {
+    if (typeof args.world_id === "string" && args.world_id.trim()) return args.world_id;
+    if (typeof args.experiment_id === "string" && args.experiment_id.trim()) {
+      return this.store.getExperiment(args.experiment_id)?.world_id ?? DEFAULT_PHYSICAL_WORLD_ID;
+    }
+    return DEFAULT_PHYSICAL_WORLD_ID;
+  }
+
+  private recordDetectedPhysicalRobots(result: JsonObject): void {
+    const parsed = this.parseToolResultJson(result);
+    const robots = parsed && Array.isArray(parsed.robots) ? parsed.robots : [];
+    for (const raw of robots) {
+      if (!raw || typeof raw !== "object") continue;
+      const robot = raw as JsonObject;
+      const robotId = String(robot.suggested_robot_id ?? robot.robot_id ?? "").trim();
+      if (!robotId) continue;
+      this.store.assignRobotToWorld({
+        robotId,
+        worldId: DEFAULT_PHYSICAL_WORLD_ID,
+        robotKind: "physical",
+        port: typeof robot.port === "string" ? robot.port : null,
+        metadata: {
+          looks_like_so101: robot.looks_like_so101 === true,
+          servo_ids: Array.isArray(robot.servo_ids) ? robot.servo_ids : []
+        }
+      });
+    }
+  }
+
+  private parseToolResultJson(result: JsonObject): JsonObject | null {
+    const content = result.content;
+    const text = Array.isArray(content) && typeof (content[0] as JsonObject | undefined)?.text === "string"
+      ? String((content[0] as JsonObject).text)
+      : "";
+    if (!text) return result;
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as JsonObject;
+    } catch {
+      return null;
+    }
+    return null;
   }
 
   private backendTools(): JsonObject[] {
@@ -371,8 +533,143 @@ export class Chem0Backend extends EventEmitter {
           type: "object",
           properties: {
             name: { type: "string" },
+            world_id: {
+              type: "string",
+              description: "Optional world id. Defaults to the default physical world."
+            },
             metadata: { type: "object", additionalProperties: true }
           },
+          additionalProperties: false
+        }
+      },
+      {
+        name: "list_worlds",
+        description: "List physical and virtual worlds plus robot-world assignments.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false }
+      },
+      {
+        name: "create_world",
+        description: "Create a physical or virtual world.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string", enum: ["physical", "virtual"] },
+            metadata: { type: "object", additionalProperties: true }
+          },
+          required: ["name", "type"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "delete_world",
+        description: "Delete a world with no experiments. The default physical world is protected.",
+        inputSchema: {
+          type: "object",
+          properties: { world_id: { type: "string" } },
+          required: ["world_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "update_world",
+        description: "Update world settings such as display name and metadata.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            world_id: { type: "string" },
+            name: { type: "string" },
+            metadata: { type: "object", additionalProperties: true }
+          },
+          required: ["world_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "assign_robot_to_world",
+        description: "Assign a physical robot to a physical world or a virtual robot to a virtual world.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            robot_id: { type: "string" },
+            world_id: { type: "string" },
+            robot_kind: { type: "string", enum: ["physical", "virtual"] },
+            port: { type: ["string", "null"] },
+            make_default: { type: "boolean", default: false },
+            metadata: { type: "object", additionalProperties: true }
+          },
+          required: ["robot_id", "world_id", "robot_kind"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "list_virtual_entities",
+        description: "List virtual arms, cameras, and rigid bodies placed in virtual worlds.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            world_id: { type: "string", description: "Optional virtual world id filter." }
+          },
+          additionalProperties: false
+        }
+      },
+      {
+        name: "create_virtual_arm",
+        description:
+          "Place a virtual SO-101 arm in a virtual world and register it as a virtual robot. The entity is collidable using full URDF collision mode.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            world_id: { type: "string" },
+            name: { type: "string" },
+            model: { type: "string", default: "so101" },
+            pose: { type: "object", additionalProperties: true },
+            spec: { type: "object", additionalProperties: true },
+            make_default: { type: "boolean", default: false }
+          },
+          required: ["world_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "create_virtual_camera",
+        description: "Place a virtual camera in a virtual world.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            world_id: { type: "string" },
+            name: { type: "string" },
+            pose: { type: "object", additionalProperties: true },
+            spec: { type: "object", additionalProperties: true }
+          },
+          required: ["world_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "create_virtual_rigid_body",
+        description:
+          "Place a virtual rigid body in a virtual world with full collision enabled by default. Provide collision shape, dimensions, and mass through spec.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            world_id: { type: "string" },
+            name: { type: "string" },
+            pose: { type: "object", additionalProperties: true },
+            spec: { type: "object", additionalProperties: true },
+            collision_enabled: { type: "boolean", default: true }
+          },
+          required: ["world_id"],
+          additionalProperties: false
+        }
+      },
+      {
+        name: "delete_virtual_entity",
+        description: "Delete a virtual arm, camera, or rigid body.",
+        inputSchema: {
+          type: "object",
+          properties: { entity_id: { type: "string" } },
+          required: ["entity_id"],
           additionalProperties: false
         }
       },
@@ -407,7 +704,15 @@ export class Chem0Backend extends EventEmitter {
         inputSchema: {
           type: "object",
           properties: {
-            robot_id: { type: "string" }
+            robot_id: { type: "string" },
+            world_id: {
+              type: "string",
+              description: "Optional world id. Defaults to the experiment world when experiment_id is provided, otherwise the default physical world."
+            },
+            experiment_id: {
+              type: "string",
+              description: "Optional experiment id used to infer world scope."
+            }
           },
           required: ["robot_id"],
           additionalProperties: false
@@ -418,7 +723,16 @@ export class Chem0Backend extends EventEmitter {
         description: "Return the backend default robot id, or null if no default has been set.",
         inputSchema: {
           type: "object",
-          properties: {},
+          properties: {
+            world_id: {
+              type: "string",
+              description: "Optional world id. Defaults to the experiment world when experiment_id is provided, otherwise the default physical world."
+            },
+            experiment_id: {
+              type: "string",
+              description: "Optional experiment id used to infer world scope."
+            }
+          },
           additionalProperties: false
         }
       },

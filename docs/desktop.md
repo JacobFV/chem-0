@@ -58,6 +58,10 @@ send the captured audio to the shared backend `listen_to_human` tool.
 The console includes:
 
 - experiment creation and selection,
+- physical and virtual world creation/edit/deletion in the left-hand Worlds tab
+  through a centered settings modal,
+- physical arm assignment plus virtual arm creation in the left-hand Arms tab,
+- virtual camera and rigid-body placement in virtual worlds,
 - GPT-5.5 streaming agent session chat,
 - microphone recording for human speech transcription,
 - persisted session event replay,

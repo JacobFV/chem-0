@@ -9,7 +9,11 @@ state, experiment state, persistence, or agent streaming independently.
 - One backend for both MCP and Electron, so tool semantics and safety checks do
   not drift.
 - A durable experiment model where each experiment has agent sessions,
-  append-only `agent_session_events`, and artifact records.
+  append-only `agent_session_events`, artifact records, and a single world
+  scope.
+- World-scoped robot selection, so multiple physical labs and virtual benches
+  can coexist without requiring the agent to pass `world_id` on every tool
+  call.
 - Local-first persistence: `data/chem0.sqlite` plus `data/blobs` beside it.
 - MCP compatibility while accepting that MCP clients do not expose their full
   chat transcript to the server. MCP tools therefore accept `experiment_id` so
@@ -129,11 +133,44 @@ flowchart TB
    events into the GUI while appending each event to SQLite.
 4. MCP-created tool calls pass through the same backend. When a call includes
    `experiment_id`, the backend logs `tool_call` and `tool_response` events.
-5. Hardware calls are forwarded to the Python bridge, which dispatches to
+5. The backend resolves omitted `robot_id` values from the experiment's world
+   default robot. Agents normally pass `experiment_id`, not `world_id`.
+6. Hardware calls are forwarded to the Python bridge, which dispatches to
    `src/lib/chem0/core.py`.
-6. Voice tools can speak through ElevenLabs or macOS system speech and can
+7. Voice tools can speak through ElevenLabs or macOS system speech and can
    transcribe Electron microphone clips or MCP-provided audio files.
-7. Image responses from tools such as `view_camera` are copied into the blob
+8. Image responses from tools such as `view_camera` are copied into the blob
    store and referenced from `experiment_artifacts`.
-8. Joint-space and Cartesian movement still route through calibrated validation
+9. Joint-space and Cartesian movement still route through calibrated validation
    and step interpolation before any hardware action is sent.
+
+## Worlds
+
+The store always contains a protected default physical world:
+
+```text
+world_physical_default
+```
+
+Additional physical worlds represent separate real labs or benches. Virtual
+worlds represent simulated labs. A robot assignment links a robot id to exactly
+one world and records whether that robot is physical or virtual. Physical
+robots can only be assigned to physical worlds, and virtual robots can only be
+assigned to virtual worlds.
+
+Virtual worlds also own virtual entities:
+
+- `arm`: a virtual robot arm, registered as a virtual robot assignment.
+- `camera`: a virtual camera pose and render spec.
+- `rigid_body`: a collidable object with pose, mass, and collision geometry.
+
+Rigid bodies and virtual arms store `collision_enabled` plus collision specs
+such as `collision_shape`, dimensions, and `collision_mode: "full"`. That gives
+the future simulator loop a durable scene graph for arm/object collision
+checks. Virtual arms default to `collides_with: ["rigid_body"]`; rigid bodies
+default to `collides_with: ["arm", "rigid_body"]`.
+
+When `list_connected_robots` detects a real arm, the backend automatically
+places it in `world_physical_default` unless the operator assigns it elsewhere.
+Experiments and agent sessions persist their `world_id`; robot-aware tools use
+that world to resolve the default robot when `robot_id` is omitted.

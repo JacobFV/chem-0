@@ -590,7 +590,6 @@ experimentSelect.addEventListener("change", async () => {
 refreshRobotsBtn.addEventListener("click", () => void refreshRobots());
 refreshArtifactsBtn.addEventListener("click", () => void refreshArtifacts());
 
-document.querySelector("#pose-table")?.addEventListener("click", async () => show(await window.chem0.readResource("lerobot://pose-table")));
 document.querySelector("#open-record")?.addEventListener("click", async () => show(await window.chem0.openRecordWindow()));
 document.querySelector("#open-train")?.addEventListener("click", async () => show(await window.chem0.openTrainWindow()));
 document.querySelector("#open-replay")?.addEventListener("click", async () => show(await window.chem0.openReplayWindow()));

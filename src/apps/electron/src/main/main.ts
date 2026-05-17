@@ -152,13 +152,22 @@ function createCalibrationWindow(): void {
   void win.loadFile(path.join(__dirname, "../renderer/calibration.html"));
 }
 
-function createRecordWindow(): void {
+type WorkbenchTab = "record" | "train" | "replay";
+let workbenchWindow: BrowserWindow | null = null;
+
+function workbenchTitle(tab: WorkbenchTab, detached: boolean): string {
+  const label = tab.charAt(0).toUpperCase() + tab.slice(1);
+  return detached ? `${APP_NAME} ${label}` : `${APP_NAME} Workbench`;
+}
+
+function createWorkbenchWindow(opts: { tab: WorkbenchTab; detached: boolean }): BrowserWindow {
   const win = new BrowserWindow({
     width: 1400,
-    height: 860,
+    height: 900,
     minWidth: 1100,
     minHeight: 700,
-    title: `${APP_NAME} Record`,
+    title: workbenchTitle(opts.tab, opts.detached),
+    ...platformTitleBarOptions(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -167,46 +176,26 @@ function createRecordWindow(): void {
     }
   });
   windows.add(win);
-  win.on("closed", () => windows.delete(win));
-  void win.loadFile(path.join(__dirname, "../renderer/record.html"));
+  win.on("closed", () => {
+    windows.delete(win);
+    if (workbenchWindow === win) workbenchWindow = null;
+  });
+  void win.loadFile(path.join(__dirname, "../renderer/workbench.html"), {
+    search: `tab=${opts.tab}${opts.detached ? "&detached=1" : ""}`
+  });
+  return win;
 }
 
-function createTrainWindow(): void {
-  const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
-    title: `${APP_NAME} Train`,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: false
-    }
-  });
-  windows.add(win);
-  win.on("closed", () => windows.delete(win));
-  void win.loadFile(path.join(__dirname, "../renderer/train.html"));
-}
-
-function createReplayWindow(): void {
-  const win = new BrowserWindow({
-    width: 700,
-    height: 500,
-    minWidth: 600,
-    minHeight: 400,
-    title: `${APP_NAME} Replay`,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: false
-    }
-  });
-  windows.add(win);
-  win.on("closed", () => windows.delete(win));
-  void win.loadFile(path.join(__dirname, "../renderer/replay.html"));
+function openOrFocusWorkbench(tab: WorkbenchTab): BrowserWindow {
+  if (workbenchWindow && !workbenchWindow.isDestroyed()) {
+    workbenchWindow.webContents.send("chem0:workbench-set-tab", { tab });
+    workbenchWindow.setTitle(workbenchTitle(tab, false));
+    if (workbenchWindow.isMinimized()) workbenchWindow.restore();
+    workbenchWindow.focus();
+    return workbenchWindow;
+  }
+  workbenchWindow = createWorkbenchWindow({ tab, detached: false });
+  return workbenchWindow;
 }
 
 app.whenReady().then(async () => {
@@ -262,18 +251,30 @@ ipcMain.handle("chem0:open-calibration-window", async () => {
 });
 
 ipcMain.handle("chem0:open-record-window", async () => {
-  createRecordWindow();
+  openOrFocusWorkbench("record");
   return { opened: true };
 });
 
 ipcMain.handle("chem0:open-train-window", async () => {
-  createTrainWindow();
+  openOrFocusWorkbench("train");
   return { opened: true };
 });
 
 ipcMain.handle("chem0:open-replay-window", async () => {
-  createReplayWindow();
+  openOrFocusWorkbench("replay");
   return { opened: true };
+});
+
+ipcMain.handle("chem0:open-workbench-window", async (_event, tab: string = "record") => {
+  const normalized: WorkbenchTab = tab === "train" || tab === "replay" ? tab : "record";
+  openOrFocusWorkbench(normalized);
+  return { opened: true };
+});
+
+ipcMain.handle("chem0:detach-workbench-tab", async (_event, tab: string) => {
+  const normalized: WorkbenchTab = tab === "train" || tab === "replay" ? tab : "record";
+  createWorkbenchWindow({ tab: normalized, detached: true });
+  return { detached: true };
 });
 
 ipcMain.handle("chem0:open-settings-window", async () => {

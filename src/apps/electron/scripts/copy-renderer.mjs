@@ -6,10 +6,12 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = resolve(root, "../../..");
 const out = join(root, "dist", "renderer");
 mkdirSync(out, { recursive: true });
-rmSync(join(out, "calibration.js"), { force: true });
-rmSync(join(out, "calibration.js.map"), { force: true });
 
-for (const file of ["index.html", "calibration.html", "record.html", "train.html", "replay.html", "settings.html", "styles.css", "record-styles.css"]) {
+for (const stale of ["calibration.js", "calibration.js.map", "record.html", "train.html", "replay.html"]) {
+  rmSync(join(out, stale), { force: true });
+}
+
+for (const file of ["index.html", "calibration.html", "workbench.html", "settings.html", "styles.css", "record-styles.css"]) {
   copyFileSync(join(root, "src", "renderer", file), join(out, file));
 }
 copyFileSync(join(root, "src", "renderer", "calibration3d.mjs"), join(out, "calibration3d.mjs"));

@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld("chem0", {
   openTrainWindow: () => ipcRenderer.invoke("chem0:open-train-window"),
   openReplayWindow: () => ipcRenderer.invoke("chem0:open-replay-window"),
   openSettingsWindow: () => ipcRenderer.invoke("chem0:open-settings-window"),
+  openWorkbenchWindow: (tab?: string) => ipcRenderer.invoke("chem0:open-workbench-window", tab),
+  detachWorkbenchTab: (tab: string) => ipcRenderer.invoke("chem0:detach-workbench-tab", tab),
+  onWorkbenchSetTab: (callback: (payload: { tab: string }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: { tab: string }) => callback(payload);
+    ipcRenderer.on("chem0:workbench-set-tab", listener);
+    return () => ipcRenderer.removeListener("chem0:workbench-set-tab", listener);
+  },
   platform: process.platform,
   getSettings: () => ipcRenderer.invoke("chem0:get-settings"),
   setSetting: (key: string, value: unknown) => ipcRenderer.invoke("chem0:set-setting", key, value),

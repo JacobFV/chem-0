@@ -20,6 +20,9 @@ declare global {
       openTrainWindow: () => Promise<JsonObject>;
       openReplayWindow: () => Promise<JsonObject>;
       openSettingsWindow: () => Promise<JsonObject>;
+      openWorkbenchWindow: (tab?: string) => Promise<JsonObject>;
+      detachWorkbenchTab: (tab: string) => Promise<JsonObject>;
+      onWorkbenchSetTab: (callback: (payload: { tab: string }) => void) => () => void;
       platform: string;
       getSettings: () => Promise<JsonObject>;
       setSetting: (key: string, value: unknown) => Promise<JsonObject>;

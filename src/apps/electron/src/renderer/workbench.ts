@@ -70,6 +70,11 @@ injectScript("./record3d.mjs", true);
 injectScript("./train.js");
 injectScript("./replay.js");
 
+window.Chem0Shell.installThemeSync({
+  getSettings: () => window.chem0.getSettings(),
+  onSettingsChanged: (handler) => window.chem0.onSettingsChanged(handler)
+});
+
 window.Chem0Shell.installToolbarTooltips({
   getSettings: () => window.chem0.getSettings(),
   onSettingsChanged: (handler) => window.chem0.onSettingsChanged(handler)

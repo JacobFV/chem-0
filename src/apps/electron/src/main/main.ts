@@ -9,7 +9,28 @@ const windows = new Set<BrowserWindow>();
 const APP_NAME = "Chem-0 Lab Console";
 
 const settingsPath = path.join(repoRoot, "data", "settings.json");
-const settingsDefaults: JsonObject = { showToolbarTooltips: true };
+const settingsDefaults: JsonObject = { showToolbarTooltips: true, theme: "light" };
+
+function currentTheme(): "light" | "dark" {
+  return settingsState.theme === "dark" ? "dark" : "light";
+}
+
+function titleBarOverlayColors(theme: "light" | "dark"): { color: string; symbolColor: string } {
+  return theme === "dark"
+    ? { color: "#000000", symbolColor: "#a8a8a8" }
+    : { color: "#ffffff", symbolColor: "#52525b" };
+}
+
+function applyTitleBarOverlay(): void {
+  if (process.platform === "darwin") return;
+  const colors = titleBarOverlayColors(currentTheme());
+  for (const win of windows) {
+    if (win.isDestroyed()) continue;
+    try {
+      win.setTitleBarOverlay?.({ ...colors, height: 36 });
+    } catch { /* not all windows support overlay */ }
+  }
+}
 let settingsState: JsonObject = { ...settingsDefaults };
 try {
   const raw = fs.readFileSync(settingsPath, "utf8");
@@ -91,7 +112,7 @@ function platformTitleBarOptions(): Partial<Electron.BrowserWindowConstructorOpt
   }
   return {
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#000000", symbolColor: "#a8a8a8", height: 36 }
+    titleBarOverlay: { ...titleBarOverlayColors(currentTheme()), height: 36 }
   };
 }
 
@@ -321,6 +342,7 @@ ipcMain.handle("chem0:get-settings", async () => settingsState);
 ipcMain.handle("chem0:set-setting", async (_event, key: string, value: unknown) => {
   settingsState = { ...settingsState, [key]: value as never };
   persistSettings();
+  if (key === "theme") applyTitleBarOverlay();
   broadcastSettings();
   return settingsState;
 });

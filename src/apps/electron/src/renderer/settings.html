@@ -17,6 +17,28 @@
       </header>
       <section class="settings-content">
         <section class="settings-section">
+          <h2>Appearance</h2>
+          <div class="theme-options" role="radiogroup" aria-label="Theme">
+            <label class="theme-option">
+              <input type="radio" name="settings-theme" value="light" />
+              <span class="theme-swatch theme-swatch-light" aria-hidden="true">
+                <span class="theme-swatch-bar"></span>
+                <span class="theme-swatch-dot"></span>
+              </span>
+              <span class="theme-option-label">Light</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="settings-theme" value="dark" />
+              <span class="theme-swatch theme-swatch-dark" aria-hidden="true">
+                <span class="theme-swatch-bar"></span>
+                <span class="theme-swatch-dot"></span>
+              </span>
+              <span class="theme-option-label">Dark</span>
+            </label>
+          </div>
+          <p>Switches the lab console between a light (default) and dark interface across every window.</p>
+        </section>
+        <section class="settings-section">
           <h2>Toolbar</h2>
           <label class="check">
             <input id="settings-show-tooltips" type="checkbox" />
@@ -37,11 +59,26 @@
         </section>
       </section>
     </main>
+    <script src="./app-shell.js"></script>
     <script>
       document.body.classList.add(`platform-${window.chem0?.platform ?? "darwin"}`);
+
+      window.Chem0Shell.installThemeSync({
+        getSettings: () => window.chem0.getSettings(),
+        onSettingsChanged: (handler) => window.chem0.onSettingsChanged(handler)
+      });
+
       const robotInput = document.getElementById("settings-default-robot");
       const robotSave = document.getElementById("settings-save-robot");
       const tooltipsBox = document.getElementById("settings-show-tooltips");
+      const themeRadios = Array.from(document.querySelectorAll('input[name="settings-theme"]'));
+
+      function setActiveTheme(theme) {
+        const normalized = theme === "dark" ? "dark" : "light";
+        for (const radio of themeRadios) {
+          radio.checked = radio.value === normalized;
+        }
+      }
 
       (async () => {
         try {
@@ -51,8 +88,13 @@
         try {
           const settings = await window.chem0.getSettings();
           tooltipsBox.checked = settings.showToolbarTooltips !== false;
+          setActiveTheme(settings.theme);
         } catch {}
       })();
+
+      window.chem0.onSettingsChanged((settings) => {
+        if (settings && typeof settings.theme === "string") setActiveTheme(settings.theme);
+      });
 
       robotSave.addEventListener("click", async () => {
         const robot_id = robotInput.value.trim();
@@ -63,6 +105,14 @@
       tooltipsBox.addEventListener("change", async () => {
         await window.chem0.setSetting("showToolbarTooltips", tooltipsBox.checked);
       });
+
+      for (const radio of themeRadios) {
+        radio.addEventListener("change", async () => {
+          if (!radio.checked) return;
+          window.Chem0Shell.applyTheme(radio.value);
+          await window.chem0.setSetting("theme", radio.value);
+        });
+      }
     </script>
   </body>
 </html>

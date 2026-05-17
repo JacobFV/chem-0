@@ -23,9 +23,18 @@ type ToolbarTooltipOptions = {
   selector?: string;
 };
 
+type ThemeName = "light" | "dark";
+
+type ThemeSyncOptions = {
+  getSettings?: () => Promise<ShellSettings>;
+  onSettingsChanged?: (handler: (settings: ShellSettings) => void) => void;
+};
+
 type Chem0ShellApi = {
   applyPlatformClass: (platform?: string) => void;
+  applyTheme: (theme: ThemeName) => void;
   bindPaneTabs: (options: PaneTabOptions) => PaneTabBinding;
+  installThemeSync: (options?: ThemeSyncOptions) => void;
   installToolbarTooltips: (options?: ToolbarTooltipOptions) => void;
 };
 
@@ -134,8 +143,46 @@ function shellInstallToolbarTooltips(options: ToolbarTooltipOptions = {}): void 
   options.onSettingsChanged?.(applySettings);
 }
 
+const THEME_STORAGE_KEY = "chem0.theme";
+
+function shellApplyTheme(theme: ThemeName): void {
+  const normalized: ThemeName = theme === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", normalized);
+  try { window.localStorage?.setItem(THEME_STORAGE_KEY, normalized); } catch { /* ignore */ }
+}
+
+function shellInstallThemeSync(options: ThemeSyncOptions = {}): void {
+  // Apply cached theme synchronously to avoid flash-of-wrong-theme.
+  let cached: ThemeName = "light";
+  try {
+    const stored = window.localStorage?.getItem(THEME_STORAGE_KEY);
+    if (stored === "dark" || stored === "light") cached = stored;
+  } catch { /* ignore */ }
+  shellApplyTheme(cached);
+
+  function applySettings(settings: ShellSettings): void {
+    const next = settings.theme === "dark" ? "dark" : "light";
+    shellApplyTheme(next);
+  }
+
+  void options.getSettings?.().then(applySettings).catch(() => { /* ignore */ });
+  options.onSettingsChanged?.(applySettings);
+}
+
+// Apply cached theme as early as possible (before any IPC round-trip).
+(function bootstrapTheme(): void {
+  try {
+    const stored = window.localStorage?.getItem(THEME_STORAGE_KEY);
+    shellApplyTheme(stored === "dark" ? "dark" : "light");
+  } catch {
+    shellApplyTheme("light");
+  }
+})();
+
 window.Chem0Shell = {
   applyPlatformClass: shellApplyPlatformClass,
+  applyTheme: shellApplyTheme,
   bindPaneTabs: shellBindPaneTabs,
+  installThemeSync: shellInstallThemeSync,
   installToolbarTooltips: shellInstallToolbarTooltips
 };

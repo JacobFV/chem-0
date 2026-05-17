@@ -1494,6 +1494,11 @@ window.addEventListener("chem0:virtual-camera-frame", updateWorldPreviewCanvases
 
 /* --------------------------- toolbar tooltips --------------------------- */
 
+window.Chem0Shell.installThemeSync({
+  getSettings: () => window.chem0.getSettings(),
+  onSettingsChanged: (handler) => window.chem0.onSettingsChanged(handler)
+});
+
 window.Chem0Shell.installToolbarTooltips({
   getSettings: () => window.chem0.getSettings(),
   onSettingsChanged: (handler) => window.chem0.onSettingsChanged(handler)

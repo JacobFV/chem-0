@@ -84,11 +84,13 @@
               <span class="panel-hint">local</span>
             </div>
             <div class="pane-body">
-              <div class="field">
-                <label for="experiment-name">New experiment</label>
-                <div class="field-row">
-                  <input id="experiment-name" value="Bench run" />
-                  <button id="create-experiment" class="primary">Create</button>
+              <div class="pane-section">
+                <div class="field">
+                  <label for="experiment-name">New experiment</label>
+                  <div class="field-row">
+                    <input id="experiment-name" value="Bench run" />
+                    <button id="create-experiment" class="primary">Create</button>
+                  </div>
                 </div>
               </div>
               <ul id="experiments-list" class="list" role="listbox" aria-label="Experiments"></ul>
@@ -102,11 +104,13 @@
               <button id="refresh-robots" class="ghost mini">Refresh</button>
             </div>
             <div class="pane-body">
-              <div class="field">
-                <label for="default-robot">Default robot</label>
-                <div class="field-row">
-                  <input id="default-robot" placeholder="mcp_so101" />
-                  <button id="set-default-robot" class="ghost">Set</button>
+              <div class="pane-section">
+                <div class="field">
+                  <label for="default-robot">Default robot</label>
+                  <div class="field-row">
+                    <input id="default-robot" placeholder="mcp_so101" />
+                    <button id="set-default-robot" class="ghost">Set</button>
+                  </div>
                 </div>
               </div>
               <ul id="robots-list" class="list" aria-label="Connected robots"></ul>
@@ -161,6 +165,7 @@
               <span class="panel-hint">local capture</span>
             </div>
             <div class="pane-body">
+              <div class="pane-section">
               <div class="cameras-strip">
                 <div class="camera-cell" data-camera-id="0">
                   <div class="camera-frame"><video id="cam-0" autoplay muted playsinline></video></div>
@@ -176,6 +181,7 @@
                 </div>
               </div>
               <div id="robot-views" class="robot-views"></div>
+              </div>
             </div>
           </section>
 

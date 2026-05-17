@@ -1058,8 +1058,8 @@ body.platform-linux .appbar { padding-right: 140px; }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 0;
+  padding: 0;
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-2) transparent;
@@ -1068,10 +1068,36 @@ body.platform-linux .appbar { padding-right: 140px; }
 .pane-body::-webkit-scrollbar { width: 6px; }
 .pane-body::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 0; }
 
-.chat-body-pane { gap: 8px; overflow: hidden; padding-bottom: 12px; }
-.chat-body-pane .chat-log { flex: 1 1 auto; padding: 0; }
+.pane-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-1);
+  flex: 0 0 auto;
+}
 
-.notes-body .field { display: flex; flex-direction: column; gap: 4px; }
+.pane-section:last-child { border-bottom: none; }
+
+.chat-body-pane { gap: 0; overflow: hidden; padding: 0; }
+.chat-body-pane .chat-log {
+  flex: 1 1 auto;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.pane-body.notes-body {
+  padding: 0;
+  gap: 0;
+}
+.notes-body .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+.notes-body .field:last-child { border-bottom: none; }
 .notes-body label {
   margin-bottom: 0;
   font-size: 10px;
@@ -1255,8 +1281,10 @@ button.ghost.mini {
 }
 .chat-body-pane .composer {
   border-top: 1px solid var(--border-1);
-  padding-top: 8px;
+  padding: 8px 12px;
   gap: 6px;
+  background: var(--bg-0);
+  flex: 0 0 auto;
 }
 .chat-body-pane .composer textarea { border-radius: 0; min-height: 60px; }
 
@@ -1297,3 +1325,39 @@ button.ghost.mini {
   margin-bottom: 4px;
 }
 .settings-section p { color: var(--text-3); font-size: 11.5px; line-height: 1.5; }
+
+.settings-section label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-1);
+  margin: 0;
+  cursor: pointer;
+}
+.settings-section label.check input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* immediate hover tooltip for toolbar icons */
+.tooltip {
+  position: fixed;
+  z-index: 1000;
+  padding: 3px 7px;
+  background: var(--bg-3);
+  color: var(--text-1);
+  border: 1px solid var(--border-2);
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 var(--bg-0);
+}

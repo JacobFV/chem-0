@@ -19,6 +19,13 @@ contextBridge.exposeInMainWorld("chem0", {
   openReplayWindow: () => ipcRenderer.invoke("chem0:open-replay-window"),
   openSettingsWindow: () => ipcRenderer.invoke("chem0:open-settings-window"),
   platform: process.platform,
+  getSettings: () => ipcRenderer.invoke("chem0:get-settings"),
+  setSetting: (key: string, value: unknown) => ipcRenderer.invoke("chem0:set-setting", key, value),
+  onSettingsChanged: (callback: (settings: JsonObject) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: JsonObject) => callback(payload);
+    ipcRenderer.on("chem0:settings-changed", listener);
+    return () => ipcRenderer.removeListener("chem0:settings-changed", listener);
+  },
   onAgentEvent: (callback: (event: JsonObject) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: JsonObject) => callback(payload);
     ipcRenderer.on("chem0:agent-event", listener);

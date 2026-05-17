@@ -21,6 +21,9 @@ declare global {
       openReplayWindow: () => Promise<JsonObject>;
       openSettingsWindow: () => Promise<JsonObject>;
       platform: string;
+      getSettings: () => Promise<JsonObject>;
+      setSetting: (key: string, value: unknown) => Promise<JsonObject>;
+      onSettingsChanged: (callback: (settings: JsonObject) => void) => () => void;
       onAgentEvent: (callback: (event: JsonObject) => void) => () => void;
     };
   }
@@ -686,5 +689,65 @@ window.chem0.onAgentEvent((event) => {
 });
 
 window.addEventListener("resize", () => drawPhChart());
+
+/* --------------------------- toolbar tooltips --------------------------- */
+
+const tooltipEl = document.createElement("div");
+tooltipEl.className = "tooltip";
+tooltipEl.setAttribute("role", "tooltip");
+tooltipEl.style.display = "none";
+document.body.appendChild(tooltipEl);
+
+let tooltipEnabled = true;
+let tooltipTarget: HTMLElement | null = null;
+
+function showTooltip(target: HTMLElement): void {
+  if (!tooltipEnabled) return;
+  const text = target.dataset.tip ?? target.getAttribute("title") ?? "";
+  if (!text) return;
+  if (target.hasAttribute("title")) {
+    target.dataset.tip = text;
+    target.removeAttribute("title");
+  }
+  tooltipEl.textContent = text;
+  tooltipEl.style.display = "block";
+  const rect = target.getBoundingClientRect();
+  const tipRect = tooltipEl.getBoundingClientRect();
+  const left = Math.max(4, Math.min(window.innerWidth - tipRect.width - 4, rect.left + rect.width / 2 - tipRect.width / 2));
+  const top = rect.bottom + 4;
+  tooltipEl.style.left = `${left}px`;
+  tooltipEl.style.top = `${top}px`;
+  tooltipTarget = target;
+}
+
+function hideTooltip(): void {
+  tooltipEl.style.display = "none";
+  tooltipTarget = null;
+}
+
+document.addEventListener("mouseover", (event) => {
+  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
+  if (!target || target === tooltipTarget) return;
+  showTooltip(target);
+});
+
+document.addEventListener("mouseout", (event) => {
+  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
+  if (!target) return;
+  const related = (event.relatedTarget as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
+  if (related === target) return;
+  hideTooltip();
+});
+
+document.addEventListener("mousedown", () => hideTooltip());
+window.addEventListener("blur", () => hideTooltip());
+
+function applySettings(settings: JsonObject): void {
+  tooltipEnabled = settings.showToolbarTooltips !== false;
+  if (!tooltipEnabled) hideTooltip();
+}
+
+void window.chem0.getSettings().then(applySettings);
+window.chem0.onSettingsChanged(applySettings);
 
 void boot();

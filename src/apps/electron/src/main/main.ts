@@ -8,6 +8,29 @@ const backend = new Chem0Backend(repoRoot);
 const windows = new Set<BrowserWindow>();
 const APP_NAME = "Chem-0 Lab Console";
 
+const settingsPath = path.join(repoRoot, "data", "settings.json");
+const settingsDefaults: JsonObject = { showToolbarTooltips: true };
+let settingsState: JsonObject = { ...settingsDefaults };
+try {
+  const raw = fs.readFileSync(settingsPath, "utf8");
+  settingsState = { ...settingsDefaults, ...(JSON.parse(raw) as JsonObject) };
+} catch { /* file may not exist yet */ }
+
+function persistSettings(): void {
+  try {
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(settingsState, null, 2));
+  } catch (err) {
+    console.error("Failed to persist settings", err);
+  }
+}
+
+function broadcastSettings(): void {
+  for (const win of windows) {
+    if (!win.isDestroyed()) win.webContents.send("chem0:settings-changed", settingsState);
+  }
+}
+
 function applyApplicationName(): void {
   app.name = APP_NAME;
   app.setName(APP_NAME);
@@ -256,4 +279,13 @@ ipcMain.handle("chem0:open-replay-window", async () => {
 ipcMain.handle("chem0:open-settings-window", async () => {
   createSettingsWindow();
   return { opened: true };
+});
+
+ipcMain.handle("chem0:get-settings", async () => settingsState);
+
+ipcMain.handle("chem0:set-setting", async (_event, key: string, value: unknown) => {
+  settingsState = { ...settingsState, [key]: value as never };
+  persistSettings();
+  broadcastSettings();
+  return settingsState;
 });

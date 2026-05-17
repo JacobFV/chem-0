@@ -17,8 +17,12 @@
       </header>
       <section class="settings-content">
         <section class="settings-section">
-          <h2>General</h2>
-          <p>Settings are intentionally minimal for now. More options will land here as the console grows.</p>
+          <h2>Toolbar</h2>
+          <label class="check">
+            <input id="settings-show-tooltips" type="checkbox" />
+            Show tooltips on toolbar hover
+          </label>
+          <p>Reveals each icon's label without delay when the pointer enters it.</p>
         </section>
         <section class="settings-section">
           <h2>Default robot</h2>
@@ -29,24 +33,35 @@
         </section>
         <section class="settings-section">
           <h2>About</h2>
-          <p>chem-0 lab console · local LeRobot experiment platform.</p>
+          <p>chem-0 lab console &middot; local LeRobot experiment platform.</p>
         </section>
       </section>
     </main>
     <script>
       document.body.classList.add(`platform-${window.chem0?.platform ?? "darwin"}`);
-      const input = document.getElementById("settings-default-robot");
-      const save = document.getElementById("settings-save-robot");
+      const robotInput = document.getElementById("settings-default-robot");
+      const robotSave = document.getElementById("settings-save-robot");
+      const tooltipsBox = document.getElementById("settings-show-tooltips");
+
       (async () => {
         try {
           const current = await window.chem0.callTool("get_default_robot", {});
-          if (typeof current.robot_id === "string") input.value = current.robot_id;
+          if (typeof current.robot_id === "string") robotInput.value = current.robot_id;
+        } catch {}
+        try {
+          const settings = await window.chem0.getSettings();
+          tooltipsBox.checked = settings.showToolbarTooltips !== false;
         } catch {}
       })();
-      save.addEventListener("click", async () => {
-        const robot_id = input.value.trim();
+
+      robotSave.addEventListener("click", async () => {
+        const robot_id = robotInput.value.trim();
         if (!robot_id) return;
         await window.chem0.callTool("set_default_robot", { robot_id });
+      });
+
+      tooltipsBox.addEventListener("change", async () => {
+        await window.chem0.setSetting("showToolbarTooltips", tooltipsBox.checked);
       });
     </script>
   </body>

@@ -435,6 +435,16 @@ const editorApi: VirtualWorldEditorApi = {
   getState: () => ({ world, entities, selectedId, transformMode }),
   refresh,
   selectEntity: (id: string) => {
+    if (!id) {
+      if (!selectedId) return;
+      selectedId = "";
+      render();
+      return;
+    }
+    if (selectedId === id) {
+      activatePane("rhs", "selected");
+      return;
+    }
     selectedId = id;
     activatePane("rhs", "selected");
     render();

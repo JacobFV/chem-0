@@ -105,6 +105,58 @@
   display: block;
 }
 
+.vw-transform-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border-2);
+  background: color-mix(in srgb, var(--bg-0) 92%, transparent);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  transform: translateX(-50%);
+  -webkit-app-region: no-drag;
+}
+
+.vw-transform-btn {
+  min-width: 104px;
+  height: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vw-transform-btn:hover {
+  color: var(--text-1);
+  background: var(--bg-2);
+}
+
+.vw-transform-btn.active {
+  color: var(--accent);
+  background: var(--bg-1);
+  border-color: var(--border-2);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.vw-transform-btn:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
 .vw-collision-banner {
   position: absolute;
   left: 12px;
@@ -207,5 +259,14 @@
 
   .vw-scene-shell {
     min-height: 420px;
+  }
+
+  .vw-transform-dock {
+    bottom: 10px;
+  }
+
+  .vw-transform-btn {
+    min-width: 92px;
+    padding: 0 9px;
   }
 }

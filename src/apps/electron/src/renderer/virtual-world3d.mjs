@@ -144,6 +144,7 @@ const PHYSICS_PERSIST_SETTLE_MS = 250;
 const PHYSICS_PERSIST_INTERVAL_MS = 600;
 const CONTACT_EPSILON_M = 0.0005;
 const FLOOR_SIZE_M = 1.6;
+const SELECTED_OUTLINE_COLOR = 0x10d8ff;
 const floorMaterial = new THREE.MeshStandardMaterial({ color: PALETTE[currentTheme()].floor, roughness: 0.92, metalness: 0.02 });
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(FLOOR_SIZE_M, FLOOR_SIZE_M), floorMaterial);
 floor.receiveShadow = true;
@@ -161,9 +162,17 @@ const ground = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
 const dropPoint = new THREE.Vector3();
 const objects = new Map();
 const pickables = [];
+const selectionOutlineMaterial = new THREE.MeshBasicMaterial({
+  color: SELECTED_OUTLINE_COLOR,
+  depthTest: false,
+  depthWrite: false,
+  side: THREE.BackSide,
+  toneMapped: false
+});
 let entities = [];
 let selectedId = "";
 let draggingTransform = false;
+let backgroundClick = null;
 let dropStatusTimer = 0;
 let transformMode = "translate";
 let robotAsset = null;
@@ -177,7 +186,7 @@ const materials = {
   camera: new THREE.MeshStandardMaterial({ color: 0x5aa9d8, roughness: 0.5 }),
   light: new THREE.MeshStandardMaterial({ color: 0xf0e7a2, emissive: 0x5c511d, roughness: 0.35 }),
   rigid_body: new THREE.MeshStandardMaterial({ color: PALETTE[currentTheme()].rigid, roughness: 0.7 }),
-  selected: new THREE.MeshStandardMaterial({ color: 0xf5d76e, roughness: 0.45 }),
+  selected: new THREE.MeshStandardMaterial({ color: 0xd9d4b2, roughness: 0.55 }),
   collision: new THREE.MeshStandardMaterial({ color: 0xff4f4f, roughness: 0.5 })
 };
 
@@ -246,7 +255,18 @@ function setTransformMode(mode) {
   transformMode = mode === "rotate" ? "rotate" : "translate";
   translateTransform.enabled = transformMode === "translate";
   rotateTransform.enabled = transformMode === "rotate";
+  translateTransform.getHelper().visible = translateTransform.enabled && translateTransform.object !== undefined;
+  rotateTransform.getHelper().visible = rotateTransform.enabled && rotateTransform.object !== undefined;
   hideRemovedTranslateHandleTypes(translateTransform);
+}
+
+function activeTransformControl() {
+  return transformMode === "rotate" ? rotateTransform : translateTransform;
+}
+
+function transformControlHasPointer() {
+  const control = activeTransformControl();
+  return Boolean(control.dragging || control.axis);
 }
 
 function installTransformEvents(control) {
@@ -437,13 +457,48 @@ function setGroupPose(group, entity) {
 
 function applyMaterial(group, material) {
   group.traverse((node) => {
-    if (!node.isMesh || node.userData.isCameraHitbox) return;
+    if (!node.isMesh || node.userData.isCameraHitbox || node.userData.isSelectionOutline) return;
     if (material === null) {
       if (node.userData.originalMaterial) node.material = node.userData.originalMaterial;
     } else {
       node.material = material;
     }
   });
+}
+
+function setSelectionOutline(group, visible) {
+  group.traverse((node) => {
+    if (!node.isMesh || node.userData.isCameraHitbox || node.userData.isSelectionOutline) return;
+    if (!node.userData.selectionOutline) {
+      const outline = new THREE.Mesh(node.geometry, selectionOutlineMaterial);
+      outline.name = "selection_outline";
+      outline.renderOrder = Infinity;
+      outline.userData.isSelectionOutline = true;
+      outline.scale.setScalar(1.045);
+      node.add(outline);
+      node.userData.selectionOutline = outline;
+    }
+    node.userData.selectionOutline.visible = visible;
+  });
+}
+
+function withSelectionOutlinesHidden(fn) {
+  const visibleOutlines = [];
+  scene.traverse((node) => {
+    if (node.userData?.isSelectionOutline && node.visible) {
+      visibleOutlines.push(node);
+      node.visible = false;
+    }
+  });
+  try {
+    return fn();
+  } finally {
+    for (const node of visibleOutlines) node.visible = true;
+  }
+}
+
+function boxFromObjectWithoutSelectionOutline(object) {
+  return withSelectionOutlinesHidden(() => new THREE.Box3().setFromObject(object));
 }
 
 function boxMesh(size, material) {
@@ -1379,7 +1434,7 @@ function supportZFor(id, box) {
     if (otherId === id || !rigidBodyEntity(entity)) continue;
     const other = objects.get(otherId);
     if (!other) continue;
-    const otherBox = new THREE.Box3().setFromObject(other);
+    const otherBox = boxFromObjectWithoutSelectionOutline(other);
     if (!boxesOverlapXY(box, otherBox)) continue;
     if (otherBox.max.z <= box.max.z - CONTACT_EPSILON_M) {
       support = Math.max(support, otherBox.max.z);
@@ -1397,7 +1452,7 @@ function settleRigidBodies(markDirty = true) {
       const id = String(entity.id);
       const group = objects.get(id);
       if (!group) continue;
-      const box = new THREE.Box3().setFromObject(group);
+      const box = boxFromObjectWithoutSelectionOutline(group);
       const support = supportZFor(id, box);
       const delta = box.min.z - support;
       if (Math.abs(delta) <= CONTACT_EPSILON_M) continue;
@@ -1439,7 +1494,7 @@ function collisionPairs() {
     .filter(collidable)
     .map((entity) => ({ entity, group: objects.get(String(entity.id)), box: new THREE.Box3() }))
     .filter((item) => item.group);
-  for (const item of groups) item.box.setFromObject(item.group);
+  for (const item of groups) withSelectionOutlinesHidden(() => item.box.setFromObject(item.group));
   const collisions = new Set();
   for (let i = 0; i < groups.length; i += 1) {
     for (let j = i + 1; j < groups.length; j += 1) {
@@ -1464,13 +1519,14 @@ function updateCollisions() {
     if (!group) continue;
     const isCollision = collisions.has(id);
     const isSelected = id === selectedId;
+    setSelectionOutline(group, isSelected);
     if (group.userData.recolorWire) {
-      const wireOverride = isCollision ? 0xff4f4f : isSelected ? 0xf5d76e : undefined;
+      const wireOverride = isCollision ? 0xff4f4f : isSelected ? SELECTED_OUTLINE_COLOR : undefined;
       group.userData.recolorWire(wireOverride);
     } else if (isCollision) {
       applyMaterial(group, materials.collision);
     } else if (isSelected) {
-      applyMaterial(group, materials.selected);
+      applyMaterial(group, String(entity.kind) === "rigid_body" ? null : materials.selected);
     } else if (String(entity.kind) === "rigid_body") {
       applyMaterial(group, null);
     } else {
@@ -1507,24 +1563,40 @@ function showDropStatus(message, error = false) {
 }
 
 renderer.domElement.addEventListener("pointerdown", (event) => {
-  if (draggingTransform) return;
+  if (draggingTransform || transformControlHasPointer()) return;
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObjects(pickables, false)[0];
-  if (!hit) return;
+  if (!hit) {
+    backgroundClick = { x: event.clientX, y: event.clientY };
+    return;
+  }
+  backgroundClick = null;
   const id = hit.object.userData.entityId;
   if (id && editorApi()?.selectEntity) editorApi().selectEntity(String(id));
 });
 
+renderer.domElement.addEventListener("pointerup", (event) => {
+  if (!backgroundClick || draggingTransform || transformControlHasPointer()) {
+    backgroundClick = null;
+    return;
+  }
+  const dx = event.clientX - backgroundClick.x;
+  const dy = event.clientY - backgroundClick.y;
+  backgroundClick = null;
+  if (Math.hypot(dx, dy) > 4) return;
+  editorApi()?.selectEntity?.("");
+});
+
 function dragKind(event) {
   const kind = event.dataTransfer?.getData("application/x-chem0-asset") || event.dataTransfer?.getData("text/plain") || "";
-  return ["arm", "camera", "light", "box", "vial"].includes(kind) ? kind : "";
+  return /^[a-z0-9_]+$/i.test(kind) ? kind : "";
 }
 
 function validKind(kind) {
-  return ["arm", "camera", "light", "box", "vial"].includes(kind) ? kind : "";
+  return /^[a-z0-9_]+$/i.test(kind) ? kind : "";
 }
 
 function handleDragOver(event) {

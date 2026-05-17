@@ -4,6 +4,7 @@ import { TransformControls } from "./vendor/TransformControls.js";
 
 const root = document.querySelector("#vw-scene");
 const banner = document.querySelector("#vw-collision-banner");
+const dropStatus = document.querySelector("#vw-drop-status");
 
 function editorApi() {
   return window.virtualWorldEditor;
@@ -29,7 +30,7 @@ const transform = new TransformControls(camera, renderer.domElement);
 transform.setMode("translate");
 transform.setSpace("world");
 transform.setSize(0.85);
-scene.add(transform);
+scene.add(transform.getHelper());
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x202020, 1.4));
 const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -49,6 +50,8 @@ const pickables = [];
 let entities = [];
 let selectedId = "";
 let draggingTransform = false;
+let dropStatusTimer = 0;
+let transformMode = "translate";
 
 const materials = {
   arm: new THREE.MeshStandardMaterial({ color: 0xd8bd55, roughness: 0.55 }),
@@ -162,6 +165,10 @@ function buildEntity(entity) {
 function rebuild(state) {
   entities = Array.isArray(state.entities) ? state.entities : [];
   selectedId = String(state.selectedId || "");
+  if (state.transformMode === "rotate" || state.transformMode === "translate") {
+    transformMode = state.transformMode;
+    transform.setMode(transformMode);
+  }
   for (const [, group] of objects) scene.remove(group);
   objects.clear();
   pickables.length = 0;
@@ -186,8 +193,12 @@ function rebuild(state) {
 
 function attachSelected() {
   const group = objects.get(selectedId);
-  if (group) transform.attach(group);
-  else transform.detach();
+  if (group) {
+    transform.setMode(transformMode);
+    transform.attach(group);
+  } else {
+    transform.detach();
+  }
 }
 
 function collidable(entity) {
@@ -238,6 +249,23 @@ function pointerToGround(event) {
   return dropPoint;
 }
 
+function sceneContainsPoint(event) {
+  const rect = root.getBoundingClientRect();
+  return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+}
+
+function showDropStatus(message, error = false) {
+  if (!dropStatus) return;
+  window.clearTimeout(dropStatusTimer);
+  dropStatus.textContent = message;
+  dropStatus.classList.toggle("error", error);
+  dropStatus.hidden = false;
+  dropStatusTimer = window.setTimeout(() => {
+    dropStatus.hidden = true;
+    dropStatus.classList.remove("error");
+  }, 1800);
+}
+
 renderer.domElement.addEventListener("pointerdown", (event) => {
   if (draggingTransform) return;
   const rect = renderer.domElement.getBoundingClientRect();
@@ -251,31 +279,63 @@ renderer.domElement.addEventListener("pointerdown", (event) => {
 });
 
 function dragKind(event) {
-  return event.dataTransfer?.getData("application/x-chem0-asset") ||
-    event.dataTransfer?.getData("text/plain") ||
-    window.virtualWorldDragKind ||
-    "box";
+  const kind = event.dataTransfer?.getData("application/x-chem0-asset") || event.dataTransfer?.getData("text/plain") || "";
+  return ["arm", "camera", "light", "box", "vial"].includes(kind) ? kind : "";
+}
+
+function validKind(kind) {
+  return ["arm", "camera", "light", "box", "vial"].includes(kind) ? kind : "";
 }
 
 function handleDragOver(event) {
+  if (!sceneContainsPoint(event)) return;
   event.preventDefault();
   event.stopPropagation();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
 }
 
-function handleDrop(event) {
+async function handleDrop(event) {
+  if (!sceneContainsPoint(event)) return;
   event.preventDefault();
   event.stopPropagation();
   const kind = dragKind(event);
+  if (!kind) {
+    showDropStatus("Drop missing toolbox asset", true);
+    console.error("Virtual world drop ignored: DataTransfer did not include a valid asset kind.");
+    return;
+  }
   const point = pointerToGround(event);
-  editorApi()?.createEntity?.(kind, { x: point.x, y: point.y, z: kind === "camera" ? 0.4 : kind === "light" ? 0.6 : 0 });
-  window.virtualWorldDragKind = "";
+  try {
+    showDropStatus(`Adding ${kind}`);
+    await editorApi()?.createEntity?.(kind, { x: point.x, y: point.y, z: kind === "camera" ? 0.4 : kind === "light" ? 0.6 : 0 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    showDropStatus(`Add failed: ${message}`, true);
+    console.error("Virtual world asset creation failed.", error);
+  }
 }
 
-root.addEventListener("dragover", handleDragOver);
-root.addEventListener("drop", handleDrop);
-renderer.domElement.addEventListener("dragover", handleDragOver);
-renderer.domElement.addEventListener("drop", handleDrop);
+document.addEventListener("dragover", handleDragOver, true);
+document.addEventListener("drop", (event) => void handleDrop(event), true);
+
+window.addEventListener("vw:create-at-point", (event) => {
+  const detail = event.detail || {};
+  const kind = validKind(String(detail.kind || ""));
+  const clientX = Number(detail.clientX);
+  const clientY = Number(detail.clientY);
+  if (!kind || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    showDropStatus("Invalid toolbox placement", true);
+    console.error("Virtual world placement ignored: invalid toolbox placement event.", detail);
+    return;
+  }
+  const point = pointerToGround({ clientX, clientY });
+  showDropStatus(`Adding ${kind}`);
+  void editorApi()?.createEntity?.(kind, { x: point.x, y: point.y, z: kind === "camera" ? 0.4 : kind === "light" ? 0.6 : 0 }).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    showDropStatus(`Add failed: ${message}`, true);
+    console.error("Virtual world asset creation failed.", error);
+  });
+});
 
 transform.addEventListener("dragging-changed", (event) => {
   draggingTransform = Boolean(event.value);
@@ -295,6 +355,9 @@ transform.addEventListener("mouseUp", () => {
   pose.x = group.position.x;
   pose.y = group.position.y;
   pose.z = group.position.z;
+  pose.roll = THREE.MathUtils.radToDeg(group.rotation.x);
+  pose.pitch = THREE.MathUtils.radToDeg(group.rotation.y);
+  pose.yaw = THREE.MathUtils.radToDeg(group.rotation.z);
   editorApi()?.updateEntityPose?.(id, pose);
 });
 
@@ -315,5 +378,11 @@ function animate() {
 }
 
 window.addEventListener("vw:state", (event) => rebuild(event.detail || {}));
+window.addEventListener("vw:transform-mode", (event) => {
+  const mode = event.detail?.mode === "rotate" ? "rotate" : "translate";
+  transformMode = mode;
+  transform.setMode(mode);
+});
 window.addEventListener("resize", resize);
+rebuild(editorApi()?.getState?.() || {});
 animate();

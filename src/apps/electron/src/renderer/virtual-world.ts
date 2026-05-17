@@ -31,6 +31,11 @@ const collisionInput = document.querySelector<HTMLInputElement>("#vw-collision")
 const saveObjectBtn = document.querySelector<HTMLButtonElement>("#vw-save-object")!;
 const deleteObjectBtn = document.querySelector<HTMLButtonElement>("#vw-delete-object")!;
 const sceneEl = document.querySelector<HTMLElement>("#vw-scene")!;
+const dragGhost = document.createElement("div");
+dragGhost.className = "vw-drag-ghost";
+dragGhost.hidden = true;
+document.body.appendChild(dragGhost);
+const dropStatus = document.querySelector<HTMLDivElement>("#vw-drop-status")!;
 
 let world: JsonObject | null = null;
 let entities: JsonObject[] = [];
@@ -45,7 +50,6 @@ type VirtualWorldEditorApi = {
 
 type ToolboxDrag = {
   kind: string;
-  pointerId: number;
   source: HTMLButtonElement;
   moved: boolean;
   startX: number;
@@ -54,42 +58,92 @@ type ToolboxDrag = {
 
 let toolboxDrag: ToolboxDrag | null = null;
 let suppressToolClick = false;
+let localDropStatusTimer = 0;
 
 function pointInScene(x: number, y: number): boolean {
   const rect = sceneEl.getBoundingClientRect();
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
-function finishToolboxDrag(event: PointerEvent): void {
+function moveDragGhost(x: number, y: number): void {
+  dragGhost.style.transform = `translate(${x + 10}px, ${y + 10}px)`;
+}
+
+function showLocalDropStatus(message: string, error = false): void {
+  window.clearTimeout(localDropStatusTimer);
+  dropStatus.textContent = message;
+  dropStatus.classList.toggle("error", error);
+  dropStatus.hidden = false;
+  localDropStatusTimer = window.setTimeout(() => {
+    dropStatus.hidden = true;
+    dropStatus.classList.remove("error");
+  }, 1800);
+}
+
+function finishToolboxDrag(event: MouseEvent): void {
   const drag = toolboxDrag;
-  if (!drag || drag.pointerId !== event.pointerId) return;
+  if (!drag) return;
   toolboxDrag = null;
   drag.source.classList.remove("dragging");
+  dragGhost.hidden = true;
   if (!drag.moved) return;
   suppressToolClick = true;
   event.preventDefault();
   event.stopPropagation();
-  if (!pointInScene(event.clientX, event.clientY)) return;
+  if (!pointInScene(event.clientX, event.clientY)) {
+    showLocalDropStatus("Release over scene", true);
+    return;
+  }
+  showLocalDropStatus(`Adding ${drag.kind}`);
   window.dispatchEvent(new CustomEvent("vw:create-at-point", { detail: { kind: drag.kind, clientX: event.clientX, clientY: event.clientY } }));
 }
 
-function cancelToolboxDrag(event: PointerEvent): void {
-  if (!toolboxDrag || toolboxDrag.pointerId !== event.pointerId) return;
+function cancelToolboxDrag(): void {
+  if (!toolboxDrag) return;
   toolboxDrag.source.classList.remove("dragging");
   toolboxDrag = null;
+  dragGhost.hidden = true;
 }
 
-window.addEventListener("pointermove", (event) => {
-  if (!toolboxDrag || toolboxDrag.pointerId !== event.pointerId) return;
+function beginToolboxDrag(source: HTMLButtonElement, event: MouseEvent): void {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const kind = source.dataset.create ?? "box";
+  toolboxDrag = {
+    kind,
+    source,
+    moved: false,
+    startX: event.clientX,
+    startY: event.clientY
+  };
+  dragGhost.textContent = source.textContent?.trim() ?? kind;
+  moveDragGhost(event.clientX, event.clientY);
+  dragGhost.hidden = false;
+  source.classList.add("dragging");
+  showLocalDropStatus(`Dragging ${kind}`);
+}
+
+document.addEventListener("mousedown", (event) => {
+  const source = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-create]");
+  if (!source) return;
+  beginToolboxDrag(source, event);
+}, true);
+
+document.addEventListener("mousemove", (event) => {
+  if (!toolboxDrag) return;
   const dx = event.clientX - toolboxDrag.startX;
   const dy = event.clientY - toolboxDrag.startY;
-  if (Math.hypot(dx, dy) <= 4) return;
-  toolboxDrag.moved = true;
+  if (Math.hypot(dx, dy) > 4) {
+    toolboxDrag.moved = true;
+    dragGhost.hidden = false;
+  }
+  moveDragGhost(event.clientX, event.clientY);
   event.preventDefault();
 }, true);
 
-window.addEventListener("pointerup", finishToolboxDrag, true);
-window.addEventListener("pointercancel", cancelToolboxDrag, true);
+document.addEventListener("mouseup", finishToolboxDrag, true);
+window.addEventListener("blur", cancelToolboxDrag);
 
 function poseOf(entity: JsonObject): JsonObject {
   const pose = entity.pose;
@@ -220,20 +274,6 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-create]"))
       return;
     }
     void createEntity(btn.dataset.create ?? "box");
-  });
-  btn.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const kind = btn.dataset.create ?? "box";
-    toolboxDrag = {
-      kind,
-      pointerId: event.pointerId,
-      source: btn,
-      moved: false,
-      startX: event.clientX,
-      startY: event.clientY
-    };
-    btn.classList.add("dragging");
   });
 }
 

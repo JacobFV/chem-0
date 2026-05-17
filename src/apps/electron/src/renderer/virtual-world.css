@@ -60,6 +60,26 @@
   border-color: var(--accent);
 }
 
+.vw-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  border: 1px solid var(--accent);
+  background: rgba(0, 0, 0, 0.86);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 8px;
+  pointer-events: none;
+}
+
+.vw-drag-ghost[hidden] {
+  display: none !important;
+}
+
 .vw-scene-shell {
   position: relative;
   min-width: 0;

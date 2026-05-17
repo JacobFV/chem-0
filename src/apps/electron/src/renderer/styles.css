@@ -1085,6 +1085,12 @@ body.platform-linux .appbar { padding-left: 0; padding-right: 140px; }
 
 .appbar-submenu-options {
   min-width: 0;
+  display: none;
+}
+
+.appbar-submenu:hover .appbar-submenu-options,
+.appbar-submenu:focus-within .appbar-submenu-options {
+  display: block;
 }
 
 .appbar-submenu-options .appbar-menu-item {

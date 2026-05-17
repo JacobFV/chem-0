@@ -7,8 +7,9 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-renderer.mjs",
-    "dev": "npm run build && electron .",
-    "watch": "npm run build && concurrently -k -n tsc,copy,app -c blue,magenta,green \"tsc -p tsconfig.json -w --preserveWatchOutput\" \"chokidar 'src/renderer/*.{html,css}' -c 'node scripts/copy-renderer.mjs'\" \"electronmon .\""
+    "prepare-native-name": "node scripts/patch-electron-app-name.mjs",
+    "dev": "npm run build && npm run prepare-native-name && electron .",
+    "watch": "npm run build && npm run prepare-native-name && concurrently -k -n tsc,copy,app -c blue,magenta,green \"tsc -p tsconfig.json -w --preserveWatchOutput\" \"chokidar 'src/renderer/*.{html,css}' -c 'node scripts/copy-renderer.mjs'\" \"electronmon .\""
   },
   "electronmon": {
     "patterns": [

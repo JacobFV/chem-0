@@ -3,7 +3,7 @@ export {};
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
 
-document.body.classList.add(`platform-${window.chem0?.platform ?? "darwin"}`);
+window.Chem0Shell.applyPlatformClass(window.chem0?.platform);
 
 const params = new URLSearchParams(window.location.search);
 const initialTabRaw = (params.get("tab") ?? "record").toLowerCase();
@@ -18,42 +18,32 @@ function isTab(value: string): value is TabName {
   return (VALID_TABS as readonly string[]).includes(value);
 }
 
-const panes = new Map<TabName, HTMLElement>();
-for (const pane of document.querySelectorAll<HTMLElement>(".sidebar-pane")) {
-  const t = pane.dataset.tab ?? "";
-  if (isTab(t)) panes.set(t, pane);
-}
-
-const tabButtons = new Map<TabName, HTMLButtonElement>();
-for (const btn of document.querySelectorAll<HTMLButtonElement>(".appbar .tab-btn")) {
-  const t = btn.dataset.tab ?? "";
-  if (isTab(t)) tabButtons.set(t, btn);
-}
-
 const statusTextEl = document.querySelector<HTMLSpanElement>("#wb-status-text");
 const statusPillEl = document.querySelector<HTMLDivElement>("#wb-status-pill");
 
 let currentTab: TabName = isTab(initialTabRaw) ? initialTabRaw : "record";
 
-function activateTab(tab: TabName): void {
-  currentTab = tab;
-  for (const [name, pane] of panes) pane.classList.toggle("active", name === tab);
-  for (const [name, btn] of tabButtons) btn.classList.toggle("active", name === tab);
-  if (statusTextEl) statusTextEl.textContent = tab;
-  if (statusPillEl) statusPillEl.classList.toggle("active", true);
-}
+const tabBinding = window.Chem0Shell.bindPaneTabs({
+  buttonsSelector: ".appbar .tab-btn",
+  initialTab: currentTab,
+  onActivate: (tab) => {
+    if (!isTab(tab)) return;
+    currentTab = tab;
+    if (statusTextEl) statusTextEl.textContent = tab;
+    if (statusPillEl) statusPillEl.classList.toggle("active", true);
+  },
+  validate: isTab
+});
 
-for (const [name, btn] of tabButtons) {
-  btn.addEventListener("click", () => activateTab(name));
+function activateTab(tab: TabName): void {
+  tabBinding.activate(tab);
 }
 
 if (detached) {
-  for (const [name, btn] of tabButtons) {
-    if (name !== currentTab) btn.style.display = "none";
+  for (const btn of tabBinding.buttons) {
+    if (btn.dataset.tab !== currentTab) btn.style.display = "none";
   }
 }
-
-activateTab(currentTab);
 
 document.querySelector<HTMLButtonElement>("#wb-detach")?.addEventListener("click", async () => {
   await window.chem0.detachWorkbenchTab(currentTab);
@@ -80,62 +70,10 @@ injectScript("./record3d.mjs", true);
 injectScript("./train.js");
 injectScript("./replay.js");
 
-/* tooltips — mirror the main window behavior */
-
-const tooltipEl = document.createElement("div");
-tooltipEl.className = "tooltip";
-tooltipEl.style.display = "none";
-document.body.appendChild(tooltipEl);
-
-let tooltipEnabled = true;
-let tooltipTarget: HTMLElement | null = null;
-
-function showTooltip(target: HTMLElement): void {
-  if (!tooltipEnabled) return;
-  const text = target.dataset.tip ?? target.getAttribute("title") ?? "";
-  if (!text) return;
-  if (target.hasAttribute("title")) {
-    target.dataset.tip = text;
-    target.removeAttribute("title");
-  }
-  tooltipEl.textContent = text;
-  tooltipEl.style.display = "block";
-  const rect = target.getBoundingClientRect();
-  const tipRect = tooltipEl.getBoundingClientRect();
-  const left = Math.max(4, Math.min(window.innerWidth - tipRect.width - 4, rect.left + rect.width / 2 - tipRect.width / 2));
-  const top = rect.bottom + 4;
-  tooltipEl.style.left = `${left}px`;
-  tooltipEl.style.top = `${top}px`;
-  tooltipTarget = target;
-}
-
-function hideTooltip(): void {
-  tooltipEl.style.display = "none";
-  tooltipTarget = null;
-}
-
-document.addEventListener("mouseover", (event) => {
-  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
-  if (!target || target === tooltipTarget) return;
-  showTooltip(target);
+window.Chem0Shell.installToolbarTooltips({
+  getSettings: () => window.chem0.getSettings(),
+  onSettingsChanged: (handler) => window.chem0.onSettingsChanged(handler)
 });
-document.addEventListener("mouseout", (event) => {
-  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
-  if (!target) return;
-  const related = (event.relatedTarget as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
-  if (related === target) return;
-  hideTooltip();
-});
-document.addEventListener("mousedown", () => hideTooltip());
-window.addEventListener("blur", () => hideTooltip());
-
-function applySettings(settings: JsonObject): void {
-  tooltipEnabled = settings.showToolbarTooltips !== false;
-  if (!tooltipEnabled) hideTooltip();
-}
-
-void window.chem0.getSettings().then(applySettings);
-window.chem0.onSettingsChanged(applySettings);
 
 /* the ?: silences ts unused warnings on JsonValue when no params consumed */
 void (null as JsonValue);

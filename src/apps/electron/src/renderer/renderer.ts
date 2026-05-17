@@ -33,7 +33,7 @@ declare global {
   }
 }
 
-document.body.classList.add(`platform-${window.chem0?.platform ?? "darwin"}`);
+window.Chem0Shell.applyPlatformClass(window.chem0?.platform);
 
 const output = document.querySelector<HTMLPreElement>("#output")!;
 const experimentSelect = document.querySelector<HTMLSelectElement>("#experiment")!;
@@ -956,20 +956,35 @@ const SIDEBAR_TABS: Record<"lhs" | "rhs", string> = {
   rhs: "rhs:chat"
 };
 
+const sidebarTabBindings = {
+  lhs: window.Chem0Shell.bindPaneTabs({
+    buttonsSelector: '.tab-btn[data-tab^="lhs:"]',
+    initialTab: SIDEBAR_TABS.lhs,
+    onActivate: (tab) => {
+      SIDEBAR_TABS.lhs = tab;
+      if (!workspace.classList.contains("lhs-collapsed")) return;
+      workspace.classList.remove("lhs-collapsed");
+      updateToggleButtonStates();
+    },
+    paneRoot: lhsSidebar
+  }),
+  rhs: window.Chem0Shell.bindPaneTabs({
+    buttonsSelector: '.tab-btn[data-tab^="rhs:"]',
+    initialTab: SIDEBAR_TABS.rhs,
+    onActivate: (tab) => {
+      SIDEBAR_TABS.rhs = tab;
+      if (!workspace.classList.contains("rhs-collapsed")) return;
+      workspace.classList.remove("rhs-collapsed");
+      updateToggleButtonStates();
+    },
+    paneRoot: rhsSidebar
+  })
+};
+
 function activateTab(tab: string): void {
   const [side] = tab.split(":") as ["lhs" | "rhs"];
   if (side !== "lhs" && side !== "rhs") return;
-  SIDEBAR_TABS[side] = tab;
-  const sidebar = side === "lhs" ? lhsSidebar : rhsSidebar;
-  for (const pane of sidebar.querySelectorAll<HTMLElement>(".sidebar-pane")) {
-    pane.classList.toggle("active", pane.dataset.tab === tab);
-  }
-  for (const btn of document.querySelectorAll<HTMLButtonElement>(`.tab-btn[data-tab^="${side}:"]`)) {
-    btn.classList.toggle("active", btn.dataset.tab === tab);
-  }
-  if (!workspace.classList.contains(`${side}-collapsed`)) return;
-  workspace.classList.remove(`${side}-collapsed`);
-  updateToggleButtonStates();
+  sidebarTabBindings[side].activate(tab);
 }
 
 function updateToggleButtonStates(): void {
@@ -988,15 +1003,6 @@ toggleRhsBtn.addEventListener("click", () => {
   drawPhChart();
 });
 
-for (const btn of document.querySelectorAll<HTMLButtonElement>(".tab-btn")) {
-  btn.addEventListener("click", () => {
-    const tab = btn.dataset.tab;
-    if (tab) activateTab(tab);
-  });
-}
-
-activateTab(SIDEBAR_TABS.lhs);
-activateTab(SIDEBAR_TABS.rhs);
 updateToggleButtonStates();
 
 /* --------------------------- boot & actions --------------------------- */
@@ -1238,62 +1244,9 @@ window.addEventListener("resize", () => drawPhChart());
 
 /* --------------------------- toolbar tooltips --------------------------- */
 
-const tooltipEl = document.createElement("div");
-tooltipEl.className = "tooltip";
-tooltipEl.setAttribute("role", "tooltip");
-tooltipEl.style.display = "none";
-document.body.appendChild(tooltipEl);
-
-let tooltipEnabled = true;
-let tooltipTarget: HTMLElement | null = null;
-
-function showTooltip(target: HTMLElement): void {
-  if (!tooltipEnabled) return;
-  const text = target.dataset.tip ?? target.getAttribute("title") ?? "";
-  if (!text) return;
-  if (target.hasAttribute("title")) {
-    target.dataset.tip = text;
-    target.removeAttribute("title");
-  }
-  tooltipEl.textContent = text;
-  tooltipEl.style.display = "block";
-  const rect = target.getBoundingClientRect();
-  const tipRect = tooltipEl.getBoundingClientRect();
-  const left = Math.max(4, Math.min(window.innerWidth - tipRect.width - 4, rect.left + rect.width / 2 - tipRect.width / 2));
-  const top = rect.bottom + 4;
-  tooltipEl.style.left = `${left}px`;
-  tooltipEl.style.top = `${top}px`;
-  tooltipTarget = target;
-}
-
-function hideTooltip(): void {
-  tooltipEl.style.display = "none";
-  tooltipTarget = null;
-}
-
-document.addEventListener("mouseover", (event) => {
-  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
-  if (!target || target === tooltipTarget) return;
-  showTooltip(target);
+window.Chem0Shell.installToolbarTooltips({
+  getSettings: () => window.chem0.getSettings(),
+  onSettingsChanged: (handler) => window.chem0.onSettingsChanged(handler)
 });
-
-document.addEventListener("mouseout", (event) => {
-  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
-  if (!target) return;
-  const related = (event.relatedTarget as HTMLElement | null)?.closest<HTMLElement>(".icon-btn");
-  if (related === target) return;
-  hideTooltip();
-});
-
-document.addEventListener("mousedown", () => hideTooltip());
-window.addEventListener("blur", () => hideTooltip());
-
-function applySettings(settings: JsonObject): void {
-  tooltipEnabled = settings.showToolbarTooltips !== false;
-  if (!tooltipEnabled) hideTooltip();
-}
-
-void window.chem0.getSettings().then(applySettings);
-window.chem0.onSettingsChanged(applySettings);
 
 void boot();

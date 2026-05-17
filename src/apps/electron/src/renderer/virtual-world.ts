@@ -10,7 +10,7 @@ type Chem0Api = {
 
 const chem0 = (window as unknown as { chem0: Chem0Api }).chem0;
 
-document.body.classList.add(`platform-${chem0?.platform ?? "darwin"}`);
+window.Chem0Shell.applyPlatformClass(chem0?.platform);
 
 const params = new URLSearchParams(window.location.search);
 const worldId = params.get("world_id") ?? "";
@@ -56,23 +56,28 @@ function selectedEntity(): JsonObject | undefined {
   return entities.find((entity) => String(entity.id) === selectedId);
 }
 
+const paneBindings = {
+  lhs: window.Chem0Shell.bindPaneTabs({
+    buttonAttr: "data-vw-lhs",
+    buttonsSelector: "button[data-vw-lhs]",
+    initialTab: "toolbox",
+    paneAttr: "data-vw-pane",
+    paneRoot: document.querySelector<HTMLElement>(".vw-sidebar.lhs") ?? document
+  }),
+  rhs: window.Chem0Shell.bindPaneTabs({
+    buttonAttr: "data-vw-rhs",
+    buttonsSelector: "button[data-vw-rhs]",
+    initialTab: "world",
+    paneAttr: "data-vw-pane",
+    paneRoot: document.querySelector<HTMLElement>(".vw-sidebar.rhs") ?? document
+  })
+};
+
 function activatePane(side: "lhs" | "rhs", pane: string): void {
-  const attr = side === "lhs" ? "data-vw-lhs" : "data-vw-rhs";
-  for (const btn of document.querySelectorAll<HTMLButtonElement>(`button[${attr}]`)) {
-    btn.classList.toggle("active", btn.getAttribute(attr) === pane);
-  }
-  const scope = side === "lhs" ? ".vw-sidebar.lhs" : ".vw-sidebar.rhs";
-  for (const el of document.querySelectorAll<HTMLElement>(`${scope} .sidebar-pane`)) {
-    el.classList.toggle("active", el.dataset.vwPane === pane);
-  }
+  paneBindings[side].activate(pane);
 }
 
-for (const btn of document.querySelectorAll<HTMLButtonElement>("button[data-vw-lhs]")) {
-  btn.addEventListener("click", () => activatePane("lhs", btn.dataset.vwLhs ?? "toolbox"));
-}
-for (const btn of document.querySelectorAll<HTMLButtonElement>("button[data-vw-rhs]")) {
-  btn.addEventListener("click", () => activatePane("rhs", btn.dataset.vwRhs ?? "world"));
-}
+window.Chem0Shell.installToolbarTooltips();
 
 function render(): void {
   if (world) {

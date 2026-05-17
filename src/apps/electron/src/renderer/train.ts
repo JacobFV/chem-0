@@ -2,6 +2,7 @@ export {};
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
 
+{
 const api = (window as unknown as { chem0: { callTool: (name: string, args?: Record<string, unknown>) => Promise<JsonObject> } }).chem0;
 
 function textContent(result: JsonObject): string {
@@ -130,3 +131,4 @@ stopBtn.addEventListener("click", () => void stopTraining());
 refreshBtn.addEventListener("click", () => void listCheckpoints());
 
 void listCheckpoints();
+}

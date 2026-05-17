@@ -8,60 +8,47 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="calibration-app">
-      <header class="topbar">
-        <div class="brand">
-          <span class="brand-mark"></span>
-          <h1>calibration</h1>
-          <span class="brand-sub">so-101 · deterministic</span>
+    <main class="calibration-app calibration-immersive">
+      <div id="urdf-viewer" class="urdf-viewer-fullscreen"></div>
+
+      <section id="start-overlay" class="overlay-center">
+        <h1 class="overlay-title">Calibrate SO-101</h1>
+        <button id="start-button" class="start-button">START CALIBRATION</button>
+        <div class="start-picker">
+          <label for="calibration-robot">Arm</label>
+          <select id="calibration-robot"></select>
         </div>
-        <div class="actions">
-          <button id="prepare-calibration" class="ghost">Prepare</button>
-          <button id="record-endpoint" class="ghost" disabled>Record</button>
-          <button id="finish-calibration" class="primary" disabled>Finish</button>
+        <div id="start-status" class="start-status">Scanning for arms…</div>
+      </section>
+
+      <section id="confirm-overlay" class="overlay-center" hidden>
+        <h1 class="overlay-title">Overwrite calibration?</h1>
+        <p class="overlay-body">
+          This resets the homing offsets and position limits on the selected arm
+          and writes a new calibration file. The existing calibration will be
+          backed up next to the new one.
+        </p>
+        <div class="overlay-buttons">
+          <button id="confirm-cancel" class="ghost-button">Cancel</button>
+          <button id="confirm-start" class="start-button">Yes, recalibrate</button>
         </div>
-      </header>
+      </section>
 
-      <section class="calibration-layout">
-        <section class="panel calibration-visual">
-          <div class="panel-head">
-            <h2>Robot preview</h2>
-            <span class="panel-hint">live + guide pose</span>
-          </div>
-          <div class="robot-diagram" aria-label="SO-101 calibration diagram">
-            <div id="urdf-viewer" class="urdf-viewer"></div>
-          </div>
-          <div id="urdf-caption" class="urdf-caption">Loading URDF...</div>
-        </section>
+      <section id="step-overlay" class="overlay-bottom" hidden>
+        <div id="progress-dots" class="progress-dots"></div>
+        <div class="step-cue">
+          <span id="cue-arrow" class="step-arrow" aria-hidden="true">·</span>
+          <h2 id="cue-verb" class="step-verb pulse">Move the arm</h2>
+        </div>
+        <div id="step-status" class="step-status">step</div>
+        <div id="step-error" class="step-error" hidden></div>
+        <button id="step-button" class="step-button">RECORD</button>
+      </section>
 
-        <section class="panel calibration-controls">
-          <div class="calibration-fields">
-            <div class="field">
-              <label for="calibration-robot">Connected robot</label>
-              <select id="calibration-robot"></select>
-            </div>
-            <div class="field">
-              <label for="calibration-robot-id">Robot id</label>
-              <input id="calibration-robot-id" value="mcp_so101_b" />
-            </div>
-          </div>
-          <div class="field calibration-secondary-actions">
-            <label for="calibration-port">Serial port</label>
-            <div class="field-row">
-              <input id="calibration-port" value="/dev/tty.usbmodem5A460833421" aria-label="Selected serial port" />
-              <button id="refresh-robots" class="ghost">Refresh</button>
-            </div>
-          </div>
-
-          <div class="step-card">
-            <div id="step-count" class="step-count">Not prepared</div>
-            <h2 id="step-title">Prepare the arm</h2>
-            <p id="step-prompt">Connect one powered arm, then click Prepare.</p>
-          </div>
-
-          <div id="endpoint-table" class="endpoint-table"></div>
-          <pre id="calibration-output"></pre>
-        </section>
+      <section id="done-overlay" class="overlay-center" hidden>
+        <h1 class="overlay-title">✓ Calibration saved</h1>
+        <div id="done-id" class="overlay-subtitle"></div>
+        <button id="close-button" class="start-button">Close</button>
       </section>
     </main>
     <script type="importmap">

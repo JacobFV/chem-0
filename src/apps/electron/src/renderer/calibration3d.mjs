@@ -2,28 +2,73 @@ import * as THREE from "three";
 import { STLLoader } from "./vendor/STLLoader.js";
 
 const FALLBACK_STEPS = [
-  { axis: "Z1", joint: "shoulder_pan", label: "base Z roll", first: "all the way to the left", second: "all the way to the right" },
-  { axis: "X1", joint: "shoulder_lift", label: "base X pitch", first: "all the way backward", second: "all the way forward" },
-  { axis: "X2", joint: "elbow_flex", label: "elbow X pitch", first: "fully bent/backward", second: "fully extended/forward" },
-  { axis: "X3", joint: "wrist_flex", label: "wrist X pitch", first: "all the way down/backward", second: "all the way up/forward" },
-  { axis: "Z2", joint: "wrist_roll", label: "wrist Z roll", first: "all the way counterclockwise/left", second: "all the way clockwise/right" },
-  { axis: "Hand", joint: "gripper", label: "gripper", first: "fully closed", second: "fully open" }
+  { axis: "Z1", joint: "shoulder_pan", label: "base", first: "left", second: "right" },
+  { axis: "X1", joint: "shoulder_lift", label: "shoulder", first: "back", second: "forward" },
+  { axis: "X2", joint: "elbow_flex", label: "elbow", first: "bent", second: "extended" },
+  { axis: "X3", joint: "wrist_flex", label: "wrist", first: "down", second: "up" },
+  { axis: "Z2", joint: "wrist_roll", label: "wrist roll", first: "ccw", second: "cw" },
+  { axis: "Hand", joint: "gripper", label: "gripper", first: "closed", second: "open" }
 ];
 
-const portInput = document.querySelector("#calibration-port");
+const DIRECTION_CUES = {
+  shoulder_pan: {
+    first: { glyph: "←", verb: "Rotate base fully left" },
+    second: { glyph: "→", verb: "Rotate base fully right" }
+  },
+  shoulder_lift: {
+    first: { glyph: "⤴", verb: "Tilt shoulder all the way back" },
+    second: { glyph: "⤵", verb: "Tilt shoulder all the way forward" }
+  },
+  elbow_flex: {
+    first: { glyph: "↶", verb: "Bend elbow fully back" },
+    second: { glyph: "↷", verb: "Extend elbow fully forward" }
+  },
+  wrist_flex: {
+    first: { glyph: "↓", verb: "Wrist all the way down" },
+    second: { glyph: "↑", verb: "Wrist all the way up" }
+  },
+  wrist_roll: {
+    first: { glyph: "↺", verb: "Roll wrist counterclockwise" },
+    second: { glyph: "↻", verb: "Roll wrist clockwise" }
+  },
+  gripper: {
+    first: { glyph: "▶◀", verb: "Close gripper fully" },
+    second: { glyph: "◀ ▶", verb: "Open gripper fully" }
+  }
+};
+
+const ALIGN_TOLERANCE_RAD = 0.12;
+
+// Reference second-endpoint raw positions (0..4095, servo center 2047) derived from a
+// real SO-101 calibration on this hardware. These are *targets* the ghost points toward
+// during the second endpoint of each joint, not enforced limits.
+const GUIDE_SECOND_TARGETS = {
+  shoulder_pan: 1134,
+  shoulder_lift: 2366,
+  elbow_flex: 1221,
+  wrist_flex: 3093,
+  wrist_roll: 2170,
+  gripper: 557
+};
+
 const robotSelect = document.querySelector("#calibration-robot");
-const robotIdInput = document.querySelector("#calibration-robot-id");
-const refreshRobotsButton = document.querySelector("#refresh-robots");
-const prepareButton = document.querySelector("#prepare-calibration");
-const recordButton = document.querySelector("#record-endpoint");
-const finishButton = document.querySelector("#finish-calibration");
-const stepCount = document.querySelector("#step-count");
-const stepTitle = document.querySelector("#step-title");
-const stepPrompt = document.querySelector("#step-prompt");
-const endpointTable = document.querySelector("#endpoint-table");
-const output = document.querySelector("#calibration-output");
+const startOverlay = document.querySelector("#start-overlay");
+const startButton = document.querySelector("#start-button");
+const startStatus = document.querySelector("#start-status");
+const confirmOverlay = document.querySelector("#confirm-overlay");
+const confirmStartButton = document.querySelector("#confirm-start");
+const confirmCancelButton = document.querySelector("#confirm-cancel");
+const stepOverlay = document.querySelector("#step-overlay");
+const cueArrow = document.querySelector("#cue-arrow");
+const cueVerb = document.querySelector("#cue-verb");
+const stepStatus = document.querySelector("#step-status");
+const stepError = document.querySelector("#step-error");
+const stepButton = document.querySelector("#step-button");
+const progressDots = document.querySelector("#progress-dots");
+const doneOverlay = document.querySelector("#done-overlay");
+const doneId = document.querySelector("#done-id");
+const closeButton = document.querySelector("#close-button");
 const viewer = document.querySelector("#urdf-viewer");
-const caption = document.querySelector("#urdf-caption");
 
 let steps = FALLBACK_STEPS;
 let stepIndex = 0;
@@ -32,13 +77,16 @@ let records = {};
 let livePositions = {};
 let pollTimer = undefined;
 let animationFrame = undefined;
+// "prepare" | "record" | "finish" | "done"
+let mode = "prepare";
+let busy = false;
+let pollPaused = false;
 
 let scene;
 let camera;
 let renderer;
 let liveRobot;
 let guideRobot;
-let urdfJoints = [];
 const orbit = {
   target: new THREE.Vector3(0, 0, 0.16),
   radius: 3.25,
@@ -56,13 +104,8 @@ function failLoudly(error) {
   box.className = "calibration-fatal";
   box.textContent = `3D calibration viewer failed.\n\n${message}`;
   viewer.append(box);
-  caption.textContent = "3D viewer failed; no 2D fallback is available.";
-  show({ fatal_3d_viewer_error: message });
+  startStatus.textContent = "3D viewer failed to load.";
   throw error;
-}
-
-function show(value) {
-  output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
 function textFromTool(result) {
@@ -122,12 +165,20 @@ function parseUrdf(text) {
   return { links, joints, materials };
 }
 
-function currentStep() {
-  return steps[stepIndex];
+function currentStep() { return steps[stepIndex]; }
+function currentEndpointKey() { return endpointIndex === 0 ? "first" : "second"; }
+
+function selectedPort() {
+  return robotSelect.selectedOptions[0]?.value?.trim() ?? "";
 }
 
-function currentDirection(step) {
-  return endpointIndex === 0 ? step.first : step.second;
+function selectedRobotId() {
+  const opt = robotSelect.selectedOptions[0];
+  const suggested = opt?.dataset.robotId;
+  if (suggested) return suggested;
+  const port = selectedPort();
+  const tail = port.split(/[^A-Za-z0-9]+/).filter(Boolean).pop() ?? "b";
+  return `mcp_so101_${tail.toLowerCase()}`;
 }
 
 function rawAngle(joint) {
@@ -138,35 +189,32 @@ function rawAngle(joint) {
 
 function guideAngle(joint) {
   const step = currentStep();
-  if (!step || step.joint !== joint) return rawAngle(joint);
-  const sign = endpointIndex === 0 ? -1 : 1;
-  if (joint === "gripper") return sign > 0 ? 1.2 : -0.15;
-  return sign * 1.25;
+  if (!step || step.joint !== joint || mode !== "record") return rawAngle(joint);
+  // First endpoint: no reference — keep the ghost on top of the live pose so it's invisible.
+  if (endpointIndex === 0) return rawAngle(joint);
+  // Second endpoint: aim the ghost at the empirically measured second-endpoint raw position
+  // for this joint. This is a directional hint, not a position the operator must match.
+  const targetRaw = GUIDE_SECOND_TARGETS[joint];
+  if (!Number.isFinite(targetRaw)) return rawAngle(joint);
+  return ((targetRaw - 2047) / 4095) * Math.PI * 2;
 }
 
 function materialFor(name, materials, ghost = false) {
   if (ghost) {
     return new THREE.MeshStandardMaterial({
-      color: 0xd8a64f,
-      roughness: 0.65,
-      metalness: 0.05,
-      transparent: true,
-      opacity: 0.22,
-      depthWrite: false
+      color: 0xd8a64f, roughness: 0.65, metalness: 0.05,
+      transparent: true, opacity: 0.22, depthWrite: false
     });
   }
   const source = materials[name] ?? materials["3d_printed"];
   return new THREE.MeshStandardMaterial({
     color: source?.color ?? new THREE.Color(0xffd21f),
-    roughness: 0.72,
-    metalness: 0.05
+    roughness: 0.72, metalness: 0.05
   });
 }
 
 async function loadStl(loader, url) {
-  return new Promise((resolve, reject) => {
-    loader.load(url, resolve, undefined, reject);
-  });
+  return new Promise((resolve, reject) => { loader.load(url, resolve, undefined, reject); });
 }
 
 async function buildRobotModel(urdf, { ghost = false } = {}) {
@@ -295,9 +343,7 @@ function installOrbitControls(element, state, update) {
     state.dragging = false;
     element.releasePointerCapture(event.pointerId);
   });
-  element.addEventListener("pointercancel", () => {
-    state.dragging = false;
-  });
+  element.addEventListener("pointercancel", () => { state.dragging = false; });
 }
 
 function resizeScene() {
@@ -313,77 +359,109 @@ function resizeScene() {
 function animate() {
   animationFrame = requestAnimationFrame(animate);
   if (liveRobot) setRobotPose(liveRobot, rawAngle);
-  if (guideRobot) setRobotPose(guideRobot, guideAngle);
+  if (guideRobot) {
+    setRobotPose(guideRobot, guideAngle);
+    guideRobot.visible = mode === "record" && endpointIndex === 1;
+  }
   if (renderer && scene && camera) renderer.render(scene, camera);
+  updateAlignment();
 }
 
 async function loadRobotModel() {
   await initScene();
   const result = await fetch("./robot-assets/so101/so101_new_calib.urdf");
   const urdf = parseUrdf(await result.text());
-  urdfJoints = urdf.joints;
   guideRobot = await buildRobotModel(urdf, { ghost: true });
   liveRobot = await buildRobotModel(urdf, { ghost: false });
   scene.add(guideRobot);
   scene.add(liveRobot);
-  renderStep();
 }
 
-function renderTable() {
-  endpointTable.replaceChildren();
-  const table = document.createElement("table");
-  table.innerHTML = "<thead><tr><th>Axis</th><th>Joint</th><th>First</th><th>Second</th></tr></thead>";
-  const body = document.createElement("tbody");
-  for (const step of steps) {
+function renderProgress() {
+  progressDots.replaceChildren();
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i];
     const rec = records[step.joint] ?? {};
-    const row = document.createElement("tr");
-    row.innerHTML = `<td>${step.axis}</td><td>${step.joint}</td><td>${rec.first ?? ""}</td><td>${rec.second ?? ""}</td>`;
-    if (step === currentStep()) row.classList.add("active");
-    body.append(row);
+    for (const key of ["first", "second"]) {
+      const dot = document.createElement("span");
+      dot.className = "progress-dot";
+      if (rec[key] !== undefined) dot.classList.add("filled");
+      if (i === stepIndex && mode === "record" && key === currentEndpointKey()) dot.classList.add("current");
+      progressDots.append(dot);
+    }
   }
-  table.append(body);
-  endpointTable.append(table);
+}
+
+function showOverlay(name) {
+  startOverlay.hidden = name !== "start";
+  confirmOverlay.hidden = name !== "confirm";
+  stepOverlay.hidden = name !== "step";
+  doneOverlay.hidden = name !== "done";
+}
+
+function setStepButton(label, disabled = false) {
+  stepButton.textContent = label;
+  stepButton.disabled = !!disabled || busy;
 }
 
 function renderStep() {
-  const step = currentStep();
-  if (!step) {
-    stepCount.textContent = "Ready to finish";
-    stepTitle.textContent = "All endpoints recorded";
-    stepPrompt.textContent = "Click Finish to write the calibration file and servo register limits.";
-    recordButton.disabled = true;
-    finishButton.disabled = false;
-    caption.textContent = `3D SO-101 mesh loaded · ${urdfJoints.length} URDF joints · ready to save`;
-    renderTable();
+  if (mode === "prepare") {
+    showOverlay("start");
     return;
   }
+  if (mode === "done") {
+    showOverlay("done");
+    doneId.textContent = `robot id: ${selectedRobotId()}`;
+    return;
+  }
+  if (mode === "finish") {
+    showOverlay("step");
+    cueArrow.textContent = "✓";
+    cueVerb.textContent = "All endpoints recorded";
+    stepStatus.textContent = "ready to save";
+    setStepButton("SAVE");
+    renderProgress();
+    return;
+  }
+  // record
+  showOverlay("step");
+  const step = currentStep();
+  if (!step) return;
+  const key = currentEndpointKey();
+  const cue = DIRECTION_CUES[step.joint]?.[key] ?? { glyph: "→", verb: `Move ${step.label} ${step[key]}` };
+  cueArrow.textContent = cue.glyph;
+  cueVerb.textContent = cue.verb;
+  stepStatus.textContent = `${stepIndex * 2 + endpointIndex + 1} / ${steps.length * 2} · ${step.label}`;
+  setStepButton("RECORD");
+  renderProgress();
+}
 
-  const endpointName = endpointIndex === 0 ? "first" : "second";
-  stepCount.textContent = `${stepIndex + 1} / ${steps.length} · ${endpointName} endpoint`;
-  stepTitle.textContent = `${step.axis} · ${step.label}`;
-  stepPrompt.textContent = `Move ${step.label} ${currentDirection(step)}, matching the amber ghost arm, then click Record.`;
-  recordButton.disabled = false;
-  finishButton.disabled = true;
-  caption.textContent = `3D SO-101 mesh · teal is live hardware pose · amber is ${step.axis} ${currentDirection(step)}`;
-  renderTable();
+function updateAlignment() {
+  if (mode !== "record") return;
+  const step = currentStep();
+  if (!step) return;
+  cueVerb.classList.remove("aligned");
+  const stepNum = `${stepIndex * 2 + endpointIndex + 1} / ${steps.length * 2}`;
+  // First endpoint: no reference exists yet, so don't pretend to measure alignment.
+  if (endpointIndex === 0) {
+    stepStatus.textContent = `${stepNum} · move to the limit, then press RECORD`;
+    return;
+  }
+  stepStatus.textContent = `${stepNum} · ${step.label} · press RECORD at the opposite limit`;
 }
 
 function advance() {
-  if (endpointIndex === 0) {
-    endpointIndex = 1;
-    renderStep();
-    return;
-  }
-  endpointIndex = 0;
-  stepIndex += 1;
+  if (endpointIndex === 0) endpointIndex = 1;
+  else { endpointIndex = 0; stepIndex += 1; }
+  if (stepIndex >= steps.length) mode = "finish";
+  showError(null);
   renderStep();
 }
 
 async function refreshRobots() {
   robotSelect.replaceChildren();
-  const loading = document.createElement("option");
-  loading.textContent = "Scanning...";
-  robotSelect.append(loading);
+  startStatus.textContent = "Scanning for arms…";
+  startButton.disabled = true;
   try {
     const parsed = parseToolJson(await window.chem0.callTool("list_connected_robots", { max_id: 12 }));
     const robots = Array.isArray(parsed.robots) ? parsed.robots : [];
@@ -393,40 +471,57 @@ async function refreshRobots() {
       const port = String(robot.port ?? "");
       const ids = Array.isArray(robot.servo_ids) ? robot.servo_ids.join(",") : "";
       option.value = port;
-      option.textContent = `${port} · IDs ${ids || "none"}`;
+      option.textContent = `${port.replace(/^\/dev\/tty\./, "")} · IDs ${ids || "none"}`;
       if (typeof robot.suggested_robot_id === "string") option.dataset.robotId = robot.suggested_robot_id;
       robotSelect.append(option);
     }
     if (robots.length === 0) {
+      startStatus.textContent = "No arms detected. Connect one and try again.";
       const option = document.createElement("option");
-      option.value = portInput.value;
-      option.textContent = "No robots detected";
+      option.textContent = "—";
       robotSelect.append(option);
+      startButton.disabled = true;
+    } else {
+      startStatus.textContent = `${robots.length} arm${robots.length === 1 ? "" : "s"} detected`;
+      startButton.disabled = false;
+      startLivePolling();
     }
-    const selected = robotSelect.selectedOptions[0];
-    if (selected?.value) portInput.value = selected.value;
-    if (selected?.dataset.robotId) robotIdInput.value = selected.dataset.robotId;
-    startLivePolling();
-    show(parsed);
   } catch (error) {
-    robotSelect.replaceChildren();
-    const option = document.createElement("option");
-    option.value = portInput.value;
-    option.textContent = "Scan failed";
-    robotSelect.append(option);
-    show(error instanceof Error ? error.message : String(error));
+    startStatus.textContent = error instanceof Error ? error.message : String(error);
+    startButton.disabled = true;
   }
 }
 
 async function pollLivePositions() {
-  const port = portInput.value.trim();
+  if (pollPaused) return;
+  const port = selectedPort();
   if (!port) return;
   try {
-    const parsed = parseToolJson(await window.chem0.callTool("read_so101_raw_positions", { port }));
+    const result = await window.chem0.callTool("read_so101_raw_positions", { port });
+    if (result?.isError) return;
+    const parsed = parseToolJson(result);
     livePositions = Object.fromEntries(Object.entries(parsed.positions ?? {}).map(([joint, value]) => [joint, Number(value)]));
   } catch {
     // The explicit calibration actions surface actionable errors.
   }
+}
+
+function toolErrorMessage(result) {
+  if (!result?.isError) return null;
+  const text = Array.isArray(result.content)
+    ? result.content.map((c) => c?.text).filter(Boolean).join("\n")
+    : "";
+  return text || "Tool call failed.";
+}
+
+function showError(message) {
+  if (!message) {
+    stepError.textContent = "";
+    stepError.hidden = true;
+    return;
+  }
+  stepError.textContent = message;
+  stepError.hidden = false;
 }
 
 function startLivePolling() {
@@ -435,81 +530,116 @@ function startLivePolling() {
   pollTimer = window.setInterval(() => void pollLivePositions(), 700);
 }
 
-robotSelect.addEventListener("change", () => {
-  const selected = robotSelect.selectedOptions[0];
-  if (selected?.value) portInput.value = selected.value;
-  if (selected?.dataset.robotId) robotIdInput.value = selected.dataset.robotId;
-  startLivePolling();
-});
-
-refreshRobotsButton.addEventListener("click", () => void refreshRobots());
-
-prepareButton.addEventListener("click", async () => {
-  const port = portInput.value.trim();
-  if (!port) {
-    show("Select a connected robot or enter a serial port first.");
+function openConfirm() {
+  if (!selectedPort()) {
+    startStatus.textContent = "Select an arm first.";
     return;
   }
-  prepareButton.disabled = true;
+  showOverlay("confirm");
+}
+
+function cancelConfirm() {
+  showOverlay("start");
+}
+
+async function handleStart() {
+  if (busy) return;
+  busy = true;
+  pollPaused = true;
+  confirmStartButton.disabled = true;
+  confirmCancelButton.disabled = true;
+  startStatus.textContent = "Preparing arm…";
+  showOverlay("start");
+  startButton.disabled = true;
   try {
+    const port = selectedPort();
+    if (!port) throw new Error("Select an arm first.");
     const result = await window.chem0.callTool("prepare_so101_calibration", { port });
+    const errMsg = toolErrorMessage(result);
+    if (errMsg) throw new Error(errMsg);
     const parsed = parseToolJson(result);
     if (Array.isArray(parsed.steps)) steps = parsed.steps;
     stepIndex = 0;
     endpointIndex = 0;
     records = {};
-    show(parsed);
-    startLivePolling();
-    renderStep();
+    mode = "record";
+    showError(null);
   } catch (error) {
-    prepareButton.disabled = false;
-    show(error instanceof Error ? error.message : String(error));
+    startStatus.textContent = error instanceof Error ? error.message : String(error);
+    startButton.disabled = false;
+  } finally {
+    busy = false;
+    pollPaused = false;
+    confirmStartButton.disabled = false;
+    confirmCancelButton.disabled = false;
+    renderStep();
   }
-});
+}
 
-recordButton.addEventListener("click", async () => {
+async function handleStepButton() {
+  if (busy) return;
+  busy = true;
+  pollPaused = true;
+  setStepButton(stepButton.textContent, true);
+  let errorMessage = null;
+  try {
+    if (mode === "record") errorMessage = await doRecord();
+    else if (mode === "finish") errorMessage = await doFinish();
+  } finally {
+    busy = false;
+    pollPaused = false;
+    renderStep();
+    showError(errorMessage);
+  }
+}
+
+async function doRecord() {
   const step = currentStep();
-  if (!step) return;
-  recordButton.disabled = true;
+  if (!step) return null;
   try {
     const result = await window.chem0.callTool("read_so101_calibration_endpoint", {
-      port: portInput.value.trim(),
+      port: selectedPort(),
       joint: step.joint,
       samples: 5
     });
+    const errMsg = toolErrorMessage(result);
+    if (errMsg) return errMsg;
     const parsed = parseToolJson(result);
     const raw = Number(parsed.raw_position);
-    if (!Number.isFinite(raw)) throw new Error("Endpoint read did not return a raw_position.");
+    if (!Number.isFinite(raw)) return "Endpoint read did not return a raw_position.";
     const rec = records[step.joint] ?? {};
-    if (endpointIndex === 0) rec.first = raw;
-    else rec.second = raw;
+    rec[currentEndpointKey()] = raw;
     records[step.joint] = rec;
-    show(parsed);
     advance();
+    return null;
   } catch (error) {
-    show(error instanceof Error ? error.message : String(error));
-    recordButton.disabled = false;
+    return error instanceof Error ? error.message : String(error);
   }
-});
+}
 
-finishButton.addEventListener("click", async () => {
-  finishButton.disabled = true;
+async function doFinish() {
   try {
     const result = await window.chem0.callTool("finalize_so101_calibration", {
-      port: portInput.value.trim(),
-      robot_id: robotIdInput.value.trim(),
+      port: selectedPort(),
+      robot_id: selectedRobotId(),
       records,
       write_motors: true
     });
-    show(parseToolJson(result));
-    stepCount.textContent = "Calibration saved";
-    stepTitle.textContent = robotIdInput.value.trim();
-    stepPrompt.textContent = "Use this robot id when connecting the arm.";
+    const errMsg = toolErrorMessage(result);
+    if (errMsg) return errMsg;
+    mode = "done";
+    return null;
   } catch (error) {
-    finishButton.disabled = false;
-    show(error instanceof Error ? error.message : String(error));
+    return error instanceof Error ? error.message : String(error);
   }
-});
+}
+
+robotSelect.addEventListener("change", () => { startLivePolling(); });
+startButton.addEventListener("click", openConfirm);
+confirmCancelButton.addEventListener("click", cancelConfirm);
+confirmStartButton.addEventListener("click", () => void handleStart());
+stepButton.addEventListener("click", () => void handleStepButton());
+closeButton.addEventListener("click", () => window.close());
 
 window.addEventListener("beforeunload", () => {
   if (pollTimer) window.clearInterval(pollTimer);

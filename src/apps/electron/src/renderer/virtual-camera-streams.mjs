@@ -1,10 +1,12 @@
 import * as THREE from "three";
 
 const renderers = new Map();
+const lastRenderByCanvas = new WeakMap();
 let worlds = [];
 let entities = [];
 let selectedWorldId = document.body.dataset.worldId || "world_physical_default";
 let lastRefreshMs = 0;
+let streamRoot = null;
 
 function poseOf(entity) {
   const pose = entity?.pose && typeof entity.pose === "object" && !Array.isArray(entity.pose) ? entity.pose : {};
@@ -135,6 +137,38 @@ async function refreshWorldState() {
   entities = Array.isArray(result.virtual_entities) ? result.virtual_entities : [];
 }
 
+function streamContainer() {
+  if (streamRoot) return streamRoot;
+  streamRoot = document.createElement("div");
+  streamRoot.id = "virtual-camera-stream-buffer";
+  streamRoot.hidden = true;
+  document.body.append(streamRoot);
+  return streamRoot;
+}
+
+function streamCanvasFor(cameraId) {
+  const root = streamContainer();
+  let canvas = root.querySelector(`.virtual-camera-stream[data-camera-id="${CSS.escape(cameraId)}"]`);
+  if (canvas instanceof HTMLCanvasElement) return canvas;
+  canvas = document.createElement("canvas");
+  canvas.className = "virtual-camera-stream";
+  canvas.dataset.cameraId = cameraId;
+  canvas.width = 320;
+  canvas.height = 180;
+  root.append(canvas);
+  return canvas;
+}
+
+function removeStaleStreamCanvases(cameraIds) {
+  if (!streamRoot) return;
+  for (const canvas of streamRoot.querySelectorAll(".virtual-camera-stream")) {
+    if (cameraIds.has(canvas.dataset.cameraId || "")) continue;
+    renderers.get(canvas)?.dispose?.();
+    renderers.delete(canvas);
+    canvas.remove();
+  }
+}
+
 function resizeCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
   const width = Math.max(1, Math.floor(rect.width || 320));
@@ -145,21 +179,43 @@ function resizeCanvas(canvas) {
   }
 }
 
-function renderVirtualCameras() {
-  const world = worlds.find((item) => String(item.id) === selectedWorldId);
-  if (String(world?.type || "") !== "virtual") return;
-  const worldEntities = entities.filter((entity) => String(entity.world_id) === selectedWorldId);
-  const cameras = worldEntities.filter((entity) => String(entity.kind) === "camera");
-  for (const cameraEntity of cameras) {
-    const id = String(cameraEntity.id);
-    const canvas = document.querySelector(`.virtual-camera-preview[data-camera-id="${CSS.escape(id)}"]`);
-    if (!(canvas instanceof HTMLCanvasElement)) continue;
+function renderCameraToCanvas(cameraEntity, worldEntities, canvas, intervalMs, now) {
+  const last = lastRenderByCanvas.get(canvas) ?? 0;
+  if (now - last < intervalMs) return false;
+  lastRenderByCanvas.set(canvas, now);
+  try {
     resizeCanvas(canvas);
     const renderer = rendererFor(canvas);
     renderer.setSize(canvas.width, canvas.height, false);
-    renderer.render(buildScene(worldEntities, id), cameraFromEntity(cameraEntity, canvas));
+    renderer.render(buildScene(worldEntities, String(cameraEntity.id)), cameraFromEntity(cameraEntity, canvas));
+    return true;
+  } catch (error) {
+    console.error("Virtual camera render failed.", error);
+    return false;
   }
-  if (cameras.length > 0) window.requestAnimationFrame(() => window.dispatchEvent(new Event("chem0:virtual-camera-frame")));
+}
+
+function renderVirtualCameras() {
+  const cameras = entities.filter((entity) => String(entity.kind) === "camera");
+  const cameraIds = new Set(cameras.map((cameraEntity) => String(cameraEntity.id)));
+  removeStaleStreamCanvases(cameraIds);
+  const now = performance.now();
+  let rendered = false;
+  for (const cameraEntity of cameras) {
+    const id = String(cameraEntity.id);
+    const worldId = String(cameraEntity.world_id || "");
+    const worldEntities = entities.filter((entity) => String(entity.world_id) === worldId);
+    const intervalMs = worldId === selectedWorldId ? 50 : 1000;
+
+    rendered = renderCameraToCanvas(cameraEntity, worldEntities, streamCanvasFor(id), intervalMs, now) || rendered;
+
+    if (worldId !== selectedWorldId) continue;
+    for (const canvas of document.querySelectorAll(`.virtual-camera-preview[data-camera-id="${CSS.escape(id)}"]`)) {
+      if (!(canvas instanceof HTMLCanvasElement)) continue;
+      rendered = renderCameraToCanvas(cameraEntity, worldEntities, canvas, 50, now) || rendered;
+    }
+  }
+  if (rendered) window.requestAnimationFrame(() => window.dispatchEvent(new Event("chem0:virtual-camera-frame")));
 }
 
 async function animate() {
@@ -170,7 +226,7 @@ async function animate() {
   } catch (error) {
     console.error("Virtual camera render failed.", error);
   }
-  window.setTimeout(() => void animate(), 500);
+  window.setTimeout(() => void animate(), 50);
 }
 
 window.addEventListener("chem0:world-selected", (event) => {

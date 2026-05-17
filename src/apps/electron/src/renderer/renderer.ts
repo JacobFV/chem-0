@@ -93,6 +93,7 @@ const camVideos: (HTMLVideoElement | null)[] = [
 const camStreams: (MediaStream | null)[] = [null, null, null];
 let activeBrowserCameraIds = new Set<number>();
 const virtualCameraCells = new Map<string, HTMLElement>();
+const worldPreviewLastDraw = new Map<string, number>();
 let physicalCameraWorldAssignments: Record<string, string> = JSON.parse(
   localStorage.getItem("chem0:physical-camera-worlds") ?? "{}"
 ) as Record<string, string>;
@@ -580,9 +581,9 @@ function drawWorldPreviewCanvas(canvas: HTMLCanvasElement, world: JsonObject): v
       const y = Math.floor(index / cols) * tileH;
       if (isVirtual) {
         const entity = tile as JsonObject;
-        const streamCanvas = worldsList.ownerDocument.querySelector<HTMLCanvasElement>(
-          `.virtual-camera-preview[data-camera-id="${String(entity.id)}"]`
-        );
+        const streamCanvas =
+          worldsList.ownerDocument.querySelector<HTMLCanvasElement>(`.virtual-camera-stream[data-camera-id="${String(entity.id)}"]`) ??
+          worldsList.ownerDocument.querySelector<HTMLCanvasElement>(`.virtual-camera-preview[data-camera-id="${String(entity.id)}"]`);
         const drewStream = streamCanvas ? drawImageCover(ctx, streamCanvas, x, y, tileW, tileH) : false;
         if (!drewStream) {
           const hue = Array.from(String(entity.id ?? index)).reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
@@ -612,10 +613,16 @@ function drawWorldPreviewCanvas(canvas: HTMLCanvasElement, world: JsonObject): v
 }
 
 function updateWorldPreviewCanvases(): void {
+  const now = performance.now();
   for (const canvas of worldsList.querySelectorAll<HTMLCanvasElement>(".world-orb-canvas")) {
     const worldId = canvas.dataset.worldId ?? "";
     const world = worldsCache.find((item) => String(item.id) === worldId);
-    if (world) drawWorldPreviewCanvas(canvas, world);
+    if (!world) continue;
+    const intervalMs = worldId === selectedWorldId ? 50 : 1000;
+    const last = worldPreviewLastDraw.get(worldId) ?? 0;
+    if (now - last < intervalMs) continue;
+    worldPreviewLastDraw.set(worldId, now);
+    drawWorldPreviewCanvas(canvas, world);
   }
 }
 
@@ -1269,7 +1276,7 @@ async function boot(): Promise<void> {
   void refreshRobots();
   void initBrowserCameras();
   setInterval(() => void refreshRobots(), 8000);
-  setInterval(updateWorldPreviewCanvases, 5000);
+  setInterval(updateWorldPreviewCanvases, 50);
 }
 
 document.querySelector("#create-experiment")?.addEventListener("click", () => void createExperimentFromCurrentWorld());

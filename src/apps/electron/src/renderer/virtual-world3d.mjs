@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { OrbitControls } from "./vendor/OrbitControls.js";
 import { STLLoader } from "./vendor/STLLoader.js";
 import { TransformControls } from "./vendor/TransformControls.js";
 
@@ -11,21 +10,62 @@ function editorApi() {
   return window.virtualWorldEditor;
 }
 
+function updateOrbitCamera() {
+  const offset = new THREE.Vector3(0, 0, orbit.radius).applyQuaternion(orbit.orientation);
+  camera.position.copy(orbit.target).add(offset);
+  camera.quaternion.copy(orbit.orientation);
+}
+
+function installOrbitControls(element, state, update) {
+  element.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || draggingTransform) return;
+    state.dragging = true;
+    state.lastX = event.clientX;
+    state.lastY = event.clientY;
+    element.setPointerCapture(event.pointerId);
+  });
+  element.addEventListener("pointermove", (event) => {
+    if (!state.dragging || draggingTransform) return;
+    const dx = event.clientX - state.lastX;
+    const dy = event.clientY - state.lastY;
+    state.lastX = event.clientX;
+    state.lastY = event.clientY;
+    const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(state.orientation);
+    const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(state.orientation);
+    const yaw = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * 0.008);
+    const pitch = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * 0.008);
+    state.orientation.premultiply(yaw).premultiply(pitch).normalize();
+    update();
+  });
+  element.addEventListener("pointerup", (event) => {
+    state.dragging = false;
+    if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
+  });
+  element.addEventListener("pointercancel", () => {
+    state.dragging = false;
+  });
+}
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x020202);
 
 const camera = new THREE.PerspectiveCamera(48, 1, 0.01, 20);
-camera.position.set(0.7, -1.05, 0.75);
-camera.lookAt(0, 0, 0.08);
+const orbit = {
+  target: new THREE.Vector3(0, 0, 0.08),
+  radius: 1.45,
+  orientation: new THREE.Quaternion()
+    .setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.59)
+    .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 1.02)),
+  dragging: false,
+  lastX: 0,
+  lastY: 0
+};
+updateOrbitCamera();
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(window.devicePixelRatio || 1);
 root.append(renderer.domElement);
-
-const orbit = new OrbitControls(camera, renderer.domElement);
-orbit.target.set(0, 0, 0.08);
-orbit.enableDamping = true;
-orbit.dampingFactor = 0.15;
+installOrbitControls(renderer.domElement, orbit, updateOrbitCamera);
 
 const translateTransform = new TransformControls(camera, renderer.domElement);
 translateTransform.setMode("translate");
@@ -136,7 +176,7 @@ function setTransformMode(mode) {
 function installTransformEvents(control) {
   control.addEventListener("dragging-changed", (event) => {
     draggingTransform = Boolean(event.value);
-    orbit.enabled = !draggingTransform;
+    if (draggingTransform) orbit.dragging = false;
   });
 
   control.addEventListener("objectChange", () => {
@@ -679,7 +719,6 @@ function resize() {
 
 function animate() {
   resize();
-  orbit.update();
   const now = performance.now();
   settleRigidBodies(true);
   persistPhysicsIfNeeded(now);

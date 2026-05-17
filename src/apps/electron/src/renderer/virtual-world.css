@@ -1,108 +1,51 @@
 .vw-app {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-0);
   color: var(--text-1);
 }
 
-.vw-titlebar {
-  height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border-1);
-  -webkit-app-region: drag;
+.vw-workspace {
+  --lhs-width: 240px;
+  --rhs-width: 280px;
 }
 
-.vw-titlebar button,
-.vw-tabbar button,
 .vw-tool {
   -webkit-app-region: no-drag;
 }
 
-.vw-titlebar h1 {
-  font-size: 13px;
-  letter-spacing: 0;
+.vw-sidebar .pane-head {
+  padding: 6px 9px;
 }
 
-#vw-subtitle {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-4);
-}
-
-.vw-layout {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 280px;
-}
-
-.vw-sidebar {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--border-1);
-  background: var(--bg-1);
-}
-
-.vw-sidebar.rhs {
-  border-right: none;
-  border-left: 1px solid var(--border-1);
-}
-
-.vw-tabbar {
-  display: flex;
-  border-bottom: 1px solid var(--border-1);
-}
-
-.vw-tabbar button {
-  flex: 1;
-  min-height: 32px;
-  border: none;
-  background: transparent;
-  color: var(--text-4);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-}
-
-.vw-tabbar button.active {
-  color: var(--accent);
-  background: var(--bg-2);
-}
-
-.vw-pane {
-  display: none;
-  min-height: 0;
-  overflow: auto;
-  padding: 10px;
-}
-
-.vw-pane.active {
-  display: block;
+.vw-sidebar .pane-section {
+  padding: 8px 9px;
+  gap: 6px;
 }
 
 .vw-group {
   border-bottom: 1px solid var(--border-1);
-  padding: 8px 0;
 }
 
 .vw-group h2 {
-  margin-bottom: 6px;
+  margin-bottom: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--text-4);
+  font-weight: 500;
+  text-transform: uppercase;
 }
 
 .vw-tool {
   width: 100%;
-  min-height: 30px;
-  margin-bottom: 6px;
+  min-height: 27px;
+  margin-bottom: 4px;
   border: 1px solid var(--border-1);
   background: var(--bg-0);
   color: var(--text-2);
   text-align: left;
-  padding: 6px 8px;
+  padding: 4px 7px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  border-radius: 0;
 }
 
 .vw-tool:hover {
@@ -121,63 +64,36 @@
 .vw-scene {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(var(--border-1) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border-1) 1px, transparent 1px),
-    radial-gradient(circle at center, #101010, #000 68%);
-  background-size: 44px 44px, 44px 44px, auto;
+  background: #000;
 }
 
-.vw-object {
+.vw-scene canvas {
   position: absolute;
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--border-2);
-  background: var(--bg-2);
-  color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  cursor: pointer;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-.vw-object.selected {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.vw-object.camera { border-radius: 50%; }
-.vw-object.light { border-color: #d8d8a0; }
-.vw-object.rigid_body { width: 42px; height: 32px; }
-.vw-object.arm { width: 58px; height: 36px; }
-
-.vw-gimbal {
+.vw-collision-banner {
   position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  display: grid;
-  grid-template-columns: repeat(3, 42px);
-  gap: 4px;
-  padding: 8px;
-  border: 1px solid var(--border-1);
-  background: rgba(0, 0, 0, 0.72);
-}
-
-.vw-gimbal[hidden] { display: none !important; }
-
-.vw-gimbal button {
-  min-height: 28px;
-  border: 1px solid var(--border-1);
-  background: var(--bg-0);
-  color: var(--text-2);
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  background: rgba(0, 0, 0, 0.76);
   font-family: var(--font-mono);
   font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 6px 8px;
 }
 
+.vw-collision-banner[hidden] { display: none !important; }
+
 .vw-field {
-  margin-bottom: 12px;
+  margin-bottom: 9px;
 }
 
 .vw-field input,
@@ -188,23 +104,24 @@
 .vw-grid3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: 5px;
+  margin-bottom: 8px;
 }
 
 .vw-check {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 8px 0 12px;
+  margin: 7px 0 10px;
   color: var(--text-2);
+  font-size: 11px;
 }
 
 .vw-kv {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 0;
+  padding: 6px 0;
   border-bottom: 1px solid var(--border-1);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -214,4 +131,28 @@
 .vw-kv strong {
   color: var(--text-2);
   font-weight: 500;
+}
+
+@media (max-width: 760px) {
+  .vw-app {
+    overflow: auto;
+  }
+
+  .vw-workspace {
+    min-height: 900px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 420px auto;
+  }
+
+  .vw-sidebar,
+  .vw-sidebar.rhs {
+    border-left: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-1);
+    max-height: 240px;
+  }
+
+  .vw-scene-shell {
+    min-height: 420px;
+  }
 }

@@ -17,6 +17,7 @@ for (const file of ["index.html", "calibration.html", "workbench.html", "setting
 copyFileSync(join(root, "src", "renderer", "calibration3d.mjs"), join(out, "calibration3d.mjs"));
 copyFileSync(join(root, "src", "renderer", "main3d.mjs"), join(out, "main3d.mjs"));
 copyFileSync(join(root, "src", "renderer", "record3d.mjs"), join(out, "record3d.mjs"));
+copyFileSync(join(root, "src", "renderer", "virtual-world3d.mjs"), join(out, "virtual-world3d.mjs"));
 
 const vendorOut = join(out, "vendor");
 mkdirSync(vendorOut, { recursive: true });
@@ -25,6 +26,14 @@ copyFileSync(join(repoRoot, "node_modules", "three", "build", "three.core.js"), 
 copyFileSync(
   join(repoRoot, "node_modules", "three", "examples", "jsm", "loaders", "STLLoader.js"),
   join(vendorOut, "STLLoader.js")
+);
+copyFileSync(
+  join(repoRoot, "node_modules", "three", "examples", "jsm", "controls", "OrbitControls.js"),
+  join(vendorOut, "OrbitControls.js")
+);
+copyFileSync(
+  join(repoRoot, "node_modules", "three", "examples", "jsm", "controls", "TransformControls.js"),
+  join(vendorOut, "TransformControls.js")
 );
 
 const robotAssetsOut = join(out, "robot-assets", "so101");

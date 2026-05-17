@@ -15,10 +15,8 @@ document.body.classList.add(`platform-${chem0?.platform ?? "darwin"}`);
 const params = new URLSearchParams(window.location.search);
 const worldId = params.get("world_id") ?? "";
 
-const titleEl = document.querySelector<HTMLHeadingElement>("#vw-title")!;
-const subtitleEl = document.querySelector<HTMLDivElement>("#vw-subtitle")!;
-const sceneEl = document.querySelector<HTMLDivElement>("#vw-scene")!;
-const gimbalEl = document.querySelector<HTMLDivElement>("#vw-gimbal")!;
+const titleEl = document.querySelector<HTMLElement>("#vw-title")!;
+const subtitleEl = document.querySelector<HTMLElement>("#vw-subtitle")!;
 const assetList = document.querySelector<HTMLUListElement>("#vw-asset-list")!;
 const refreshBtn = document.querySelector<HTMLButtonElement>("#vw-refresh")!;
 const worldNameInput = document.querySelector<HTMLInputElement>("#vw-world-name")!;
@@ -36,6 +34,13 @@ const deleteObjectBtn = document.querySelector<HTMLButtonElement>("#vw-delete-ob
 let world: JsonObject | null = null;
 let entities: JsonObject[] = [];
 let selectedId = "";
+
+type VirtualWorldEditorApi = {
+  createEntity: (kind: string, pose?: JsonObject) => Promise<void>;
+  refresh: () => Promise<void>;
+  selectEntity: (id: string) => void;
+  updateEntityPose: (id: string, pose: JsonObject) => Promise<void>;
+};
 
 function poseOf(entity: JsonObject): JsonObject {
   const pose = entity.pose;
@@ -57,7 +62,7 @@ function activatePane(side: "lhs" | "rhs", pane: string): void {
     btn.classList.toggle("active", btn.getAttribute(attr) === pane);
   }
   const scope = side === "lhs" ? ".vw-sidebar.lhs" : ".vw-sidebar.rhs";
-  for (const el of document.querySelectorAll<HTMLElement>(`${scope} .vw-pane`)) {
+  for (const el of document.querySelectorAll<HTMLElement>(`${scope} .sidebar-pane`)) {
     el.classList.toggle("active", el.dataset.vwPane === pane);
   }
 }
@@ -76,8 +81,8 @@ function render(): void {
     worldNameInput.value = String(world.name ?? "");
   }
   renderAssets();
-  renderScene();
   renderSelected();
+  window.dispatchEvent(new CustomEvent("vw:state", { detail: { world, entities, selectedId } }));
 }
 
 function renderAssets(): void {
@@ -102,36 +107,10 @@ function renderAssets(): void {
   }
 }
 
-function renderScene(): void {
-  sceneEl.replaceChildren();
-  const rect = sceneEl.getBoundingClientRect();
-  const width = Math.max(1, rect.width);
-  const height = Math.max(1, rect.height);
-  for (const entity of entities) {
-    const pose = poseOf(entity);
-    const x = numberAt(pose, "x");
-    const y = numberAt(pose, "y");
-    const node = document.createElement("div");
-    const kind = String(entity.kind);
-    node.className = `vw-object ${kind}`;
-    if (String(entity.id) === selectedId) node.classList.add("selected");
-    node.textContent = kind === "rigid_body" ? "obj" : kind;
-    node.style.left = `${width / 2 + x * 520 - 18}px`;
-    node.style.top = `${height / 2 + y * 520 - 18}px`;
-    node.addEventListener("click", () => {
-      selectedId = String(entity.id);
-      activatePane("rhs", "selected");
-      render();
-    });
-    sceneEl.append(node);
-  }
-}
-
 function renderSelected(): void {
   const entity = selectedEntity();
   selectedEmpty.hidden = Boolean(entity);
   selectedForm.hidden = !entity;
-  gimbalEl.hidden = !entity;
   if (!entity) return;
   const pose = poseOf(entity);
   objectNameInput.value = String(entity.name ?? "");
@@ -182,16 +161,6 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-create]"))
   });
 }
 
-sceneEl.addEventListener("dragover", (event) => event.preventDefault());
-sceneEl.addEventListener("drop", (event) => {
-  event.preventDefault();
-  const kind = event.dataTransfer?.getData("text/plain") || "box";
-  const rect = sceneEl.getBoundingClientRect();
-  const x = (event.clientX - rect.left - rect.width / 2) / 520;
-  const y = (event.clientY - rect.top - rect.height / 2) / 520;
-  void createEntity(kind, { x, y });
-});
-
 refreshBtn.addEventListener("click", () => void refresh());
 saveWorldBtn.addEventListener("click", async () => {
   await chem0.callTool("update_world", { world_id: worldId, name: worldNameInput.value.trim() || "Virtual world", metadata: (world?.metadata as JsonObject) ?? {} });
@@ -226,22 +195,27 @@ deleteObjectBtn.addEventListener("click", async () => {
   await refresh();
 });
 
-for (const btn of gimbalEl.querySelectorAll<HTMLButtonElement>("button[data-axis]")) {
-  btn.addEventListener("click", async () => {
-    const entity = selectedEntity();
+const editorApi: VirtualWorldEditorApi = {
+  createEntity,
+  refresh,
+  selectEntity: (id: string) => {
+    selectedId = id;
+    activatePane("rhs", "selected");
+    render();
+  },
+  updateEntityPose: async (id: string, pose: JsonObject) => {
+    const entity = entities.find((item) => String(item.id) === id);
     if (!entity) return;
-    const pose = poseOf(entity);
-    const axis = btn.dataset.axis ?? "x";
-    const delta = Number(btn.dataset.delta) || 0;
-    pose[axis] = numberAt(pose, axis) + delta;
     await chem0.callTool("update_virtual_entity", {
-      entity_id: String(entity.id),
+      entity_id: id,
       pose,
       spec: (entity.spec as JsonObject) ?? {},
       collision_enabled: entity.collision_enabled === true
     });
     await refresh();
-  });
-}
+  }
+};
+
+(window as unknown as { virtualWorldEditor: VirtualWorldEditorApi }).virtualWorldEditor = editorApi;
 
 void refresh();

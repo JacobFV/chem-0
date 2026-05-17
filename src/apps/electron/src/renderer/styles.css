@@ -1189,8 +1189,28 @@ button.ghost.mini {
 .pane-head-icons {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  margin-right: 6px;
+  gap: 1px;
+  margin-right: 4px;
+}
+
+.sidebar-pane[data-tab="lhs:worlds"] .pane-head {
+  padding: 5px 8px;
+  gap: 5px;
+}
+
+.sidebar-pane[data-tab="lhs:worlds"] .pane-head h2 {
+  font-size: 9.5px;
+  letter-spacing: 0.15em;
+}
+
+.sidebar-pane[data-tab="lhs:worlds"] .ghost-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.sidebar-pane[data-tab="lhs:worlds"] .pane-section {
+  padding: 6px 8px;
+  gap: 5px;
 }
 
 /* tighter inputs/buttons inside the new panes */
@@ -1310,12 +1330,26 @@ button.ghost.mini {
 .action-menu button:hover { background: var(--bg-2); color: var(--text-1); }
 
 .world-expanded {
-  margin-top: 7px;
-  padding-top: 7px;
+  margin-top: 4px;
+  padding-top: 5px;
   border-top: 1px solid var(--border-1);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+}
+
+.sidebar-pane[data-tab="lhs:worlds"] .list-item {
+  padding: 5px 7px;
+  gap: 0;
+}
+
+.sidebar-pane[data-tab="lhs:worlds"] .list-item .title {
+  font-size: 11.5px;
+}
+
+.sidebar-pane[data-tab="lhs:worlds"] .list-item .sub {
+  font-size: 9.5px;
+  line-height: 1.25;
 }
 
 .world-title-row,
@@ -1323,7 +1357,7 @@ button.ghost.mini {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 5px;
 }
 
 .world-title-row .title,
@@ -1340,30 +1374,30 @@ button.ghost.mini {
   border: 1px solid var(--border-2);
   background: var(--bg-0);
   color: var(--text-1);
-  padding: 2px 5px;
-  font-size: 12px;
-  height: 24px;
+  padding: 1px 4px;
+  font-size: 11.5px;
+  height: 21px;
 }
 
 .row-icon-actions {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 1px;
+  gap: 0;
 }
 
 .world-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 24px;
+  gap: 5px;
+  min-height: 20px;
 }
 
 .world-section-label {
   font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-4);
 }
@@ -1371,7 +1405,8 @@ button.ghost.mini {
 .world-section-row,
 .world-section-empty {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9.5px;
+  line-height: 1.25;
   color: var(--text-3);
 }
 

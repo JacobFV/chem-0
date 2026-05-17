@@ -518,6 +518,28 @@ function drawFallbackPlanet(ctx: CanvasRenderingContext2D, size: number, label: 
   ctx.fillText(label.slice(0, 18), size / 2, size / 2);
 }
 
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+): boolean {
+  const maybeVideo = source as HTMLVideoElement;
+  const maybeCanvas = source as HTMLCanvasElement;
+  const sourceW = maybeVideo.videoWidth || maybeCanvas.width || 0;
+  const sourceH = maybeVideo.videoHeight || maybeCanvas.height || 0;
+  if (sourceW <= 0 || sourceH <= 0) return false;
+  const scale = Math.max(dw / sourceW, dh / sourceH);
+  const sw = dw / scale;
+  const sh = dh / scale;
+  const sx = Math.max(0, (sourceW - sw) / 2);
+  const sy = Math.max(0, (sourceH - sh) / 2);
+  ctx.drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh);
+  return true;
+}
+
 function drawWorldPreviewCanvas(canvas: HTMLCanvasElement, world: JsonObject): void {
   const size = 320;
   if (canvas.width !== size || canvas.height !== size) {
@@ -558,20 +580,26 @@ function drawWorldPreviewCanvas(canvas: HTMLCanvasElement, world: JsonObject): v
       const y = Math.floor(index / cols) * tileH;
       if (isVirtual) {
         const entity = tile as JsonObject;
-        const hue = Array.from(String(entity.id ?? index)).reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-        const gradient = ctx.createLinearGradient(x, y, x + tileW, y + tileH);
-        gradient.addColorStop(0, `hsl(${hue}, 62%, 44%)`);
-        gradient.addColorStop(1, `hsl(${(hue + 92) % 360}, 54%, 18%)`);
-        ctx.fillStyle = gradient;
-        ctx.fillRect(x, y, tileW, tileH);
-        ctx.fillStyle = "rgba(255,255,255,0.76)";
-        ctx.font = "500 10px Inter, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(String(entity.name ?? "camera").slice(0, 16), x + tileW / 2, y + tileH / 2);
+        const streamCanvas = worldsList.ownerDocument.querySelector<HTMLCanvasElement>(
+          `.virtual-camera-preview[data-camera-id="${String(entity.id)}"]`
+        );
+        const drewStream = streamCanvas ? drawImageCover(ctx, streamCanvas, x, y, tileW, tileH) : false;
+        if (!drewStream) {
+          const hue = Array.from(String(entity.id ?? index)).reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+          const gradient = ctx.createLinearGradient(x, y, x + tileW, y + tileH);
+          gradient.addColorStop(0, `hsl(${hue}, 62%, 44%)`);
+          gradient.addColorStop(1, `hsl(${(hue + 92) % 360}, 54%, 18%)`);
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x, y, tileW, tileH);
+          ctx.fillStyle = "rgba(255,255,255,0.76)";
+          ctx.font = "500 10px Inter, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(entity.name ?? "camera").slice(0, 16), x + tileW / 2, y + tileH / 2);
+        }
       } else {
         const video = (tile as { video: HTMLVideoElement | null }).video;
-        if (video) ctx.drawImage(video, x, y, tileW, tileH);
+        if (video) drawImageCover(ctx, video, x, y, tileW, tileH);
       }
     });
   }
@@ -1133,6 +1161,7 @@ function renderSelectedWorldCameras(): void {
       frame.className = "camera-frame";
       const canvas = document.createElement("canvas");
       canvas.className = "virtual-camera-preview";
+      canvas.dataset.cameraId = id;
       frame.append(canvas);
       const label = document.createElement("div");
       label.className = "camera-label";
@@ -1144,7 +1173,10 @@ function renderSelectedWorldCameras(): void {
     const label = cell.querySelector<HTMLElement>(".camera-label");
     const canvas = cell.querySelector<HTMLCanvasElement>("canvas");
     if (label) label.textContent = String(camera.name ?? id);
-    if (canvas) drawVirtualCameraPreview(canvas, camera);
+    if (canvas) {
+      canvas.dataset.cameraId = id;
+      drawVirtualCameraPreview(canvas, camera);
+    }
   }
   updateWorldPreviewCanvases();
 }
@@ -1489,6 +1521,7 @@ window.chem0.onAgentEvent((event) => {
 });
 
 window.addEventListener("resize", () => drawPhChart());
+window.addEventListener("chem0:virtual-camera-frame", updateWorldPreviewCanvases);
 
 /* --------------------------- toolbar tooltips --------------------------- */
 

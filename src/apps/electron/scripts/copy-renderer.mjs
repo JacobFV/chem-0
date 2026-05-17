@@ -30,6 +30,7 @@ for (const file of ["app-shell.js", "renderer.js", "workbench.js", "settings.js"
 copyFileSync(join(root, "src", "renderer", "calibration3d.mjs"), join(out, "calibration3d.mjs"));
 copyFileSync(join(root, "src", "renderer", "main3d.mjs"), join(out, "main3d.mjs"));
 copyFileSync(join(root, "src", "renderer", "record3d.mjs"), join(out, "record3d.mjs"));
+copyFileSync(join(root, "src", "renderer", "virtual-camera-streams.mjs"), join(out, "virtual-camera-streams.mjs"));
 copyFileSync(join(root, "src", "renderer", "virtual-world3d.mjs"), join(out, "virtual-world3d.mjs"));
 
 const vendorOut = join(out, "vendor");

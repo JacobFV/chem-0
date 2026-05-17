@@ -137,7 +137,7 @@ export class Chem0Store {
       metadata
     };
     this.run(
-      "insert into experiments values (?, ?, ?, ?, ?, ?, ?)",
+      "insert into experiments (id, world_id, name, status, created_at, updated_at, metadata_json) values (?, ?, ?, ?, ?, ?, ?)",
       [
         experiment.id,
         experiment.world_id,
@@ -191,15 +191,18 @@ export class Chem0Store {
       created_at: created,
       updated_at: created
     };
-    this.run("insert into agent_sessions values (?, ?, ?, ?, ?, ?, ?)", [
-      session.id,
-      session.experiment_id,
-      session.world_id,
-      session.model,
-      session.status,
-      session.created_at,
-      session.updated_at
-    ]);
+    this.run(
+      "insert into agent_sessions (id, experiment_id, world_id, model, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      [
+        session.id,
+        session.experiment_id,
+        session.world_id,
+        session.model,
+        session.status,
+        session.created_at,
+        session.updated_at
+      ]
+    );
     this.save();
     return session;
   }

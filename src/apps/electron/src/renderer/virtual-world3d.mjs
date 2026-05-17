@@ -27,11 +27,20 @@ orbit.target.set(0, 0, 0.08);
 orbit.enableDamping = true;
 orbit.dampingFactor = 0.15;
 
-const transform = new TransformControls(camera, renderer.domElement);
-transform.setMode("translate");
-transform.setSpace("world");
-transform.setSize(0.85);
-scene.add(transform.getHelper());
+const translateTransform = new TransformControls(camera, renderer.domElement);
+translateTransform.setMode("translate");
+translateTransform.setSpace("world");
+translateTransform.setSize(0.85);
+translateTransform.showXY = false;
+translateTransform.showYZ = false;
+translateTransform.showXZ = false;
+scene.add(translateTransform.getHelper());
+
+const rotateTransform = new TransformControls(camera, renderer.domElement);
+rotateTransform.setMode("rotate");
+rotateTransform.setSpace("local");
+rotateTransform.setSize(0.95);
+scene.add(rotateTransform.getHelper());
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x202020, 1.4));
 const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -78,6 +87,67 @@ const materials = {
   selected: new THREE.MeshStandardMaterial({ color: 0xf5d76e, roughness: 0.45 }),
   collision: new THREE.MeshStandardMaterial({ color: 0xff4f4f, roughness: 0.5 })
 };
+
+function axisCenter(object) {
+  if (!object.geometry) return new THREE.Vector3();
+  if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+  const center = new THREE.Vector3();
+  object.geometry.boundingBox.getCenter(center);
+  return center;
+}
+
+function hideNegativeTranslateHandles(control) {
+  const gizmo = control._gizmo;
+  const groups = [gizmo?.gizmo?.translate, gizmo?.picker?.translate, gizmo?.helper?.translate];
+  for (const group of groups) {
+    if (!group) continue;
+    for (const handle of group.children) {
+      if (["XY", "YZ", "XZ", "XYZ"].includes(handle.name)) {
+        handle.visible = false;
+        continue;
+      }
+      if (!["X", "Y", "Z"].includes(handle.name)) continue;
+      const center = axisCenter(handle);
+      const axisValue = handle.name === "X" ? center.x : handle.name === "Y" ? center.y : center.z;
+      const spansOrigin =
+        handle.geometry?.boundingBox &&
+        (handle.name === "X"
+          ? handle.geometry.boundingBox.min.x < -0.001 && handle.geometry.boundingBox.max.x > 0.001
+          : handle.name === "Y"
+            ? handle.geometry.boundingBox.min.y < -0.001 && handle.geometry.boundingBox.max.y > 0.001
+            : handle.geometry.boundingBox.min.z < -0.001 && handle.geometry.boundingBox.max.z > 0.001);
+      if (axisValue < -0.001 || spansOrigin) handle.visible = false;
+    }
+  }
+}
+
+function setTransformMode(mode) {
+  transformMode = mode === "rotate" ? "rotate" : "translate";
+  translateTransform.enabled = transformMode === "translate";
+  rotateTransform.enabled = transformMode === "rotate";
+  hideNegativeTranslateHandles(translateTransform);
+}
+
+function installTransformEvents(control) {
+  control.addEventListener("dragging-changed", (event) => {
+    draggingTransform = Boolean(event.value);
+    orbit.enabled = !draggingTransform;
+  });
+
+  control.addEventListener("objectChange", () => {
+    settleRigidBodies(true);
+    updateCollisions();
+  });
+
+  control.addEventListener("mouseUp", () => {
+    const group = control.object;
+    if (!group?.userData?.entityId) return;
+    const id = String(group.userData.entityId);
+    settleRigidBodies(true);
+    physicsDirtyIds.delete(id);
+    persistGroupPose(id, group);
+  });
+}
 
 function entityPose(entity) {
   const pose = entity?.pose && typeof entity.pose === "object" && !Array.isArray(entity.pose) ? entity.pose : {};
@@ -308,7 +378,8 @@ function clearSceneObjects() {
   for (const [, group] of objects) scene.remove(group);
   objects.clear();
   pickables.length = 0;
-  transform.detach();
+  translateTransform.detach();
+  rotateTransform.detach();
 }
 
 async function rebuild(state) {
@@ -316,8 +387,7 @@ async function rebuild(state) {
   entities = Array.isArray(state.entities) ? state.entities : [];
   selectedId = String(state.selectedId || "");
   if (state.transformMode === "rotate" || state.transformMode === "translate") {
-    transformMode = state.transformMode;
-    transform.setMode(transformMode);
+    setTransformMode(state.transformMode);
   }
   const hasArm = entities.some((entity) => String(entity.kind) === "arm");
   let armAsset = null;
@@ -356,10 +426,12 @@ async function rebuild(state) {
 function attachSelected() {
   const group = objects.get(selectedId);
   if (group) {
-    transform.setMode(transformMode);
-    transform.attach(group);
+    translateTransform.attach(group);
+    rotateTransform.attach(group);
+    setTransformMode(transformMode);
   } else {
-    transform.detach();
+    translateTransform.detach();
+    rotateTransform.detach();
   }
 }
 
@@ -586,24 +658,8 @@ window.addEventListener("vw:create-at-point", (event) => {
   });
 });
 
-transform.addEventListener("dragging-changed", (event) => {
-  draggingTransform = Boolean(event.value);
-  orbit.enabled = !draggingTransform;
-});
-
-transform.addEventListener("objectChange", () => {
-  settleRigidBodies(true);
-  updateCollisions();
-});
-
-transform.addEventListener("mouseUp", () => {
-  const group = transform.object;
-  if (!group?.userData?.entityId) return;
-  const id = String(group.userData.entityId);
-  settleRigidBodies(true);
-  physicsDirtyIds.delete(id);
-  persistGroupPose(id, group);
-});
+installTransformEvents(translateTransform);
+installTransformEvents(rotateTransform);
 
 function resize() {
   const rect = root.getBoundingClientRect();
@@ -620,6 +676,7 @@ function animate() {
   const now = performance.now();
   settleRigidBodies(true);
   persistPhysicsIfNeeded(now);
+  hideNegativeTranslateHandles(translateTransform);
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
@@ -627,9 +684,9 @@ function animate() {
 window.addEventListener("vw:state", (event) => void rebuild(event.detail || {}));
 window.addEventListener("vw:transform-mode", (event) => {
   const mode = event.detail?.mode === "rotate" ? "rotate" : "translate";
-  transformMode = mode;
-  transform.setMode(mode);
+  setTransformMode(mode);
 });
 window.addEventListener("resize", resize);
+setTransformMode(transformMode);
 void rebuild(editorApi()?.getState?.() || {});
 animate();

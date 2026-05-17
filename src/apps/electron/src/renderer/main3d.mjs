@@ -24,7 +24,14 @@ function parseVector(raw) {
 
 function parseRpy(raw) {
   const values = String(raw ?? "0 0 0").trim().split(/\s+/).map(Number);
-  return new THREE.Euler(values[0] || 0, values[1] || 0, values[2] || 0, "XYZ");
+  const roll = values[0] || 0;
+  const pitch = values[1] || 0;
+  const yaw = values[2] || 0;
+  const matrix = new THREE.Matrix4()
+    .makeRotationZ(yaw)
+    .multiply(new THREE.Matrix4().makeRotationY(pitch))
+    .multiply(new THREE.Matrix4().makeRotationX(roll));
+  return new THREE.Quaternion().setFromRotationMatrix(matrix);
 }
 
 function parseUrdf(text) {
@@ -119,7 +126,7 @@ function buildRobotModel(asset) {
       if (!geometry) continue;
       const mesh = new THREE.Mesh(geometry, materialFor(visual.material, asset.urdf.materials));
       mesh.position.copy(visual.xyz);
-      mesh.rotation.copy(visual.rpy);
+      mesh.quaternion.copy(visual.rpy);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       group.add(mesh);
@@ -136,7 +143,7 @@ function buildRobotModel(asset) {
     if (!parent || !child) continue;
     const origin = new THREE.Group();
     origin.position.copy(joint.xyz);
-    origin.rotation.copy(joint.rpy);
+    origin.quaternion.copy(joint.rpy);
     const motion = new THREE.Group();
     origin.add(motion);
     motion.add(child);

@@ -126,7 +126,14 @@ function parseVector(raw) {
 
 function parseRpy(raw) {
   const values = String(raw ?? "0 0 0").trim().split(/\s+/).map(Number);
-  return new THREE.Euler(values[0] || 0, values[1] || 0, values[2] || 0, "XYZ");
+  const roll = values[0] || 0;
+  const pitch = values[1] || 0;
+  const yaw = values[2] || 0;
+  const matrix = new THREE.Matrix4()
+    .makeRotationZ(yaw)
+    .multiply(new THREE.Matrix4().makeRotationY(pitch))
+    .multiply(new THREE.Matrix4().makeRotationX(roll));
+  return new THREE.Quaternion().setFromRotationMatrix(matrix);
 }
 
 function parseUrdf(text) {
@@ -248,7 +255,7 @@ async function buildRobotModel(urdf, { ghost = false } = {}) {
       }
       const mesh = new THREE.Mesh(geometry, materialFor(visual.material, urdf.materials, ghost));
       mesh.position.copy(visual.xyz);
-      mesh.rotation.copy(visual.rpy);
+      mesh.quaternion.copy(visual.rpy);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       group.add(mesh);
@@ -266,7 +273,7 @@ async function buildRobotModel(urdf, { ghost = false } = {}) {
     const origin = new THREE.Group();
     origin.name = `${joint.name}_origin`;
     origin.position.copy(joint.xyz);
-    origin.rotation.copy(joint.rpy);
+    origin.quaternion.copy(joint.rpy);
     const motion = new THREE.Group();
     motion.name = `${joint.name}_motion`;
     origin.add(motion);

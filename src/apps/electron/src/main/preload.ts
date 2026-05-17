@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("chem0", {
   openRecordWindow: () => ipcRenderer.invoke("chem0:open-record-window"),
   openTrainWindow: () => ipcRenderer.invoke("chem0:open-train-window"),
   openReplayWindow: () => ipcRenderer.invoke("chem0:open-replay-window"),
+  openSettingsWindow: () => ipcRenderer.invoke("chem0:open-settings-window"),
+  platform: process.platform,
   onAgentEvent: (callback: (event: JsonObject) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: JsonObject) => callback(payload);
     ipcRenderer.on("chem0:agent-event", listener);

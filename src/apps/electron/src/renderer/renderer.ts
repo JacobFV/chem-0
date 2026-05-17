@@ -19,28 +19,41 @@ declare global {
       openRecordWindow: () => Promise<JsonObject>;
       openTrainWindow: () => Promise<JsonObject>;
       openReplayWindow: () => Promise<JsonObject>;
+      openSettingsWindow: () => Promise<JsonObject>;
+      platform: string;
       onAgentEvent: (callback: (event: JsonObject) => void) => () => void;
     };
   }
 }
 
+document.body.classList.add(`platform-${window.chem0?.platform ?? "darwin"}`);
+
 const output = document.querySelector<HTMLPreElement>("#output")!;
 const experimentSelect = document.querySelector<HTMLSelectElement>("#experiment")!;
 const experimentName = document.querySelector<HTMLInputElement>("#experiment-name")!;
+const experimentsList = document.querySelector<HTMLUListElement>("#experiments-list")!;
+const robotsList = document.querySelector<HTMLUListElement>("#robots-list")!;
+const artifactsList = document.querySelector<HTMLUListElement>("#artifacts-list")!;
+const experimentMeta = document.querySelector<HTMLPreElement>("#experiment-meta")!;
+const experimentNotes = document.querySelector<HTMLTextAreaElement>("#experiment-notes")!;
 const defaultRobotInput = document.querySelector<HTMLInputElement>("#default-robot")!;
 const setDefaultRobot = document.querySelector<HTMLButtonElement>("#set-default-robot")!;
+const refreshRobotsBtn = document.querySelector<HTMLButtonElement>("#refresh-robots")!;
+const refreshArtifactsBtn = document.querySelector<HTMLButtonElement>("#refresh-artifacts")!;
 const activeExperiment = document.querySelector<HTMLDivElement>("#active-experiment")!;
 const activeExperimentText = activeExperiment.querySelector<HTMLSpanElement>(".status-text") ?? activeExperiment;
-function setActiveExperimentLabel(text: string, active: boolean): void {
-  activeExperimentText.textContent = text;
-  activeExperiment.classList.toggle("active", active);
-}
 const chatLog = document.querySelector<HTMLDivElement>("#chat-log")!;
 const chatInput = document.querySelector<HTMLTextAreaElement>("#chat-input")!;
 const sendMessage = document.querySelector<HTMLButtonElement>("#send-message")!;
 const recordAudio = document.querySelector<HTMLButtonElement>("#record-audio")!;
 const stopAudio = document.querySelector<HTMLButtonElement>("#stop-audio")!;
 const phCanvas = document.querySelector<HTMLCanvasElement>("#ph-canvas");
+const workspace = document.querySelector<HTMLDivElement>(".workspace")!;
+const lhsSidebar = document.querySelector<HTMLElement>("#sidebar-lhs")!;
+const rhsSidebar = document.querySelector<HTMLElement>("#sidebar-rhs")!;
+const toggleLhsBtn = document.querySelector<HTMLButtonElement>("#toggle-lhs")!;
+const toggleRhsBtn = document.querySelector<HTMLButtonElement>("#toggle-rhs")!;
+const openSettingsBtn = document.querySelector<HTMLButtonElement>("#open-settings")!;
 const camVideos: (HTMLVideoElement | null)[] = [
   document.querySelector<HTMLVideoElement>("#cam-0"),
   document.querySelector<HTMLVideoElement>("#cam-1"),
@@ -54,9 +67,15 @@ let defaultRobotId = "";
 let assistantBubble: HTMLDivElement | null = null;
 let mediaRecorder: MediaRecorder | null = null;
 let recordedChunks: BlobPart[] = [];
+let experimentsCache: JsonObject[] = [];
 
 type PhSample = { value: number; timestamp: number };
 const phSamples: PhSample[] = [];
+
+function setActiveExperimentLabel(text: string, active: boolean): void {
+  activeExperimentText.textContent = text;
+  activeExperiment.classList.toggle("active", active);
+}
 
 function show(value: unknown): void {
   output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -76,6 +95,8 @@ function setActive(experiment: JsonObject, session?: JsonObject): void {
     experimentId ? `${String(experiment.name ?? "Experiment")} · ${experimentId}` : "No experiment",
     Boolean(experimentId)
   );
+  updateExperimentsListSelection();
+  updateNotesPane();
 }
 
 function appendChat(role: string, text: string): HTMLDivElement {
@@ -218,9 +239,68 @@ function renderEvents(events: JsonObject[]): void {
   drawPhChart();
 }
 
+function renderExperimentsList(): void {
+  experimentsList.replaceChildren();
+  if (experimentsCache.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "list-empty";
+    empty.textContent = "No experiments yet. Create one above.";
+    experimentsList.append(empty);
+    return;
+  }
+  for (const experiment of experimentsCache) {
+    const id = String(experiment.id);
+    const li = document.createElement("li");
+    li.className = "list-item";
+    li.dataset.experimentId = id;
+    if (id === experimentId) li.classList.add("active");
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = String(experiment.name ?? "Untitled");
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = id;
+    li.append(title, sub);
+    li.addEventListener("click", () => {
+      if (id === experimentId) return;
+      setActive(experiment);
+      void loadEvents();
+      void refreshArtifacts();
+    });
+    experimentsList.append(li);
+  }
+}
+
+function updateExperimentsListSelection(): void {
+  for (const li of experimentsList.querySelectorAll<HTMLLIElement>(".list-item")) {
+    li.classList.toggle("active", li.dataset.experimentId === experimentId);
+  }
+}
+
+function updateNotesPane(): void {
+  if (!experimentId) {
+    experimentMeta.textContent = "No experiment selected";
+    experimentNotes.value = "";
+    experimentNotes.disabled = true;
+    return;
+  }
+  const experiment = experimentsCache.find((e) => String(e.id) === experimentId);
+  experimentMeta.textContent = experiment
+    ? JSON.stringify(experiment, null, 2)
+    : `id: ${experimentId}`;
+  experimentNotes.disabled = false;
+  experimentNotes.value = localStorage.getItem(`chem0:notes:${experimentId}`) ?? "";
+}
+
+experimentNotes.addEventListener("input", () => {
+  if (!experimentId) return;
+  localStorage.setItem(`chem0:notes:${experimentId}`, experimentNotes.value);
+});
+
 async function refreshExperiments(): Promise<void> {
   const result = await window.chem0.listExperiments();
   const experiments = (result.experiments ?? []) as JsonObject[];
+  experimentsCache = experiments;
   experimentSelect.replaceChildren();
   for (const experiment of experiments) {
     const option = document.createElement("option");
@@ -230,6 +310,104 @@ async function refreshExperiments(): Promise<void> {
   }
   if (!experimentId && experiments[0]) setActive(experiments[0]);
   if (experimentId) experimentSelect.value = experimentId;
+  renderExperimentsList();
+  updateNotesPane();
+}
+
+async function refreshArtifacts(): Promise<void> {
+  artifactsList.replaceChildren();
+  if (!experimentId) {
+    const empty = document.createElement("li");
+    empty.className = "list-empty";
+    empty.textContent = "Select an experiment to see its artifacts.";
+    artifactsList.append(empty);
+    return;
+  }
+  try {
+    const result = await window.chem0.listArtifacts(experimentId);
+    const artifacts = (result.artifacts ?? []) as JsonObject[];
+    if (artifacts.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "list-empty";
+      empty.textContent = "No artifacts for this experiment yet.";
+      artifactsList.append(empty);
+      return;
+    }
+    for (const artifact of artifacts) {
+      const li = document.createElement("li");
+      li.className = "list-item";
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = String(artifact.name ?? artifact.id ?? "artifact");
+      const sub = document.createElement("div");
+      sub.className = "sub";
+      const kind = artifact.kind ?? artifact.mime_type ?? "";
+      const size = artifact.size_bytes ?? artifact.size ?? "";
+      sub.textContent = [kind, size].filter(Boolean).join(" · ") || String(artifact.id ?? "");
+      li.append(title, sub);
+      artifactsList.append(li);
+    }
+  } catch (error) {
+    const li = document.createElement("li");
+    li.className = "list-empty";
+    li.textContent = `Failed to load artifacts: ${error instanceof Error ? error.message : String(error)}`;
+    artifactsList.append(li);
+  }
+}
+
+function textFromTool(result: JsonObject): string {
+  const content = result.content;
+  if (!Array.isArray(content)) return JSON.stringify(result);
+  const first = content[0] as JsonObject | undefined;
+  return typeof first?.text === "string" ? (first.text as string) : JSON.stringify(result);
+}
+
+async function refreshRobots(): Promise<void> {
+  robotsList.replaceChildren();
+  try {
+    const result = await window.chem0.callTool("list_connected_robots", { max_id: 12 });
+    let parsed: JsonObject = {};
+    try { parsed = JSON.parse(textFromTool(result)) as JsonObject; } catch { parsed = result; }
+    const robots = (parsed.robots ?? []) as JsonObject[];
+    if (!Array.isArray(robots) || robots.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "list-empty";
+      empty.textContent = "No arms detected. Plug one in and refresh.";
+      robotsList.append(empty);
+      return;
+    }
+    for (const robot of robots) {
+      const li = document.createElement("li");
+      li.className = "list-item";
+      const robotId = String(robot.suggested_robot_id ?? robot.robot_id ?? "so101");
+      if (robotId === defaultRobotId) li.classList.add("active");
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = robotId;
+      const sub = document.createElement("div");
+      sub.className = "sub";
+      sub.textContent = `${String(robot.port ?? "?")} · ${robot.looks_like_so101 ? "so101" : "unknown"}`;
+      li.append(title, sub);
+      li.addEventListener("click", () => {
+        defaultRobotInput.value = robotId;
+        void applyDefaultRobot(robotId);
+      });
+      robotsList.append(li);
+    }
+  } catch (error) {
+    const li = document.createElement("li");
+    li.className = "list-empty";
+    li.textContent = `Failed to scan: ${error instanceof Error ? error.message : String(error)}`;
+    robotsList.append(li);
+  }
+}
+
+async function applyDefaultRobot(robotId: string): Promise<void> {
+  const result = await window.chem0.callTool("set_default_robot", { robot_id: robotId });
+  defaultRobotId = String(result.robot_id ?? robotId);
+  defaultRobotInput.value = defaultRobotId;
+  show(result);
+  void refreshRobots();
 }
 
 async function loadEvents(): Promise<void> {
@@ -271,7 +449,6 @@ function isLikelyContinuityCamera(label: string): boolean {
 async function initBrowserCameras(): Promise<void> {
   const active = new Set<number>();
   try {
-    // Trigger permission once so device labels populate
     const probeStream = await navigator.mediaDevices.getUserMedia({ video: true });
     for (const track of probeStream.getTracks()) track.stop();
 
@@ -314,6 +491,58 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
+/* ------------------------- tabs & sidebars ------------------------- */
+
+const SIDEBAR_TABS: Record<"lhs" | "rhs", string> = {
+  lhs: "lhs:experiments",
+  rhs: "rhs:chat"
+};
+
+function activateTab(tab: string): void {
+  const [side] = tab.split(":") as ["lhs" | "rhs"];
+  if (side !== "lhs" && side !== "rhs") return;
+  SIDEBAR_TABS[side] = tab;
+  const sidebar = side === "lhs" ? lhsSidebar : rhsSidebar;
+  for (const pane of sidebar.querySelectorAll<HTMLElement>(".sidebar-pane")) {
+    pane.classList.toggle("active", pane.dataset.tab === tab);
+  }
+  for (const btn of document.querySelectorAll<HTMLButtonElement>(`.tab-btn[data-tab^="${side}:"]`)) {
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+  }
+  if (!workspace.classList.contains(`${side}-collapsed`)) return;
+  workspace.classList.remove(`${side}-collapsed`);
+  updateToggleButtonStates();
+}
+
+function updateToggleButtonStates(): void {
+  toggleLhsBtn.classList.toggle("active", !workspace.classList.contains("lhs-collapsed"));
+  toggleRhsBtn.classList.toggle("active", !workspace.classList.contains("rhs-collapsed"));
+}
+
+toggleLhsBtn.addEventListener("click", () => {
+  workspace.classList.toggle("lhs-collapsed");
+  updateToggleButtonStates();
+  drawPhChart();
+});
+toggleRhsBtn.addEventListener("click", () => {
+  workspace.classList.toggle("rhs-collapsed");
+  updateToggleButtonStates();
+  drawPhChart();
+});
+
+for (const btn of document.querySelectorAll<HTMLButtonElement>(".tab-btn")) {
+  btn.addEventListener("click", () => {
+    const tab = btn.dataset.tab;
+    if (tab) activateTab(tab);
+  });
+}
+
+activateTab(SIDEBAR_TABS.lhs);
+activateTab(SIDEBAR_TABS.rhs);
+updateToggleButtonStates();
+
+/* --------------------------- boot & actions --------------------------- */
+
 async function boot(): Promise<void> {
   const [tools] = await Promise.all([window.chem0.listTools(), refreshExperiments()]);
   const defaultRobot = await window.chem0.callTool("get_default_robot", {});
@@ -321,7 +550,10 @@ async function boot(): Promise<void> {
   defaultRobotInput.value = defaultRobotId;
   show(tools);
   await loadEvents();
+  void refreshArtifacts();
+  void refreshRobots();
   void initBrowserCameras();
+  setInterval(() => void refreshRobots(), 8000);
 }
 
 document.querySelector("#create-experiment")?.addEventListener("click", async () => {
@@ -331,6 +563,7 @@ document.querySelector("#create-experiment")?.addEventListener("click", async ()
     setActive(result.experiment as JsonObject, result.session as JsonObject);
     await refreshExperiments();
     await loadEvents();
+    void refreshArtifacts();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     show({ create_experiment_error: message });
@@ -342,25 +575,28 @@ experimentSelect.addEventListener("change", async () => {
   experimentId = experimentSelect.value;
   sessionId = "";
   setActiveExperimentLabel(experimentId || "No experiment", Boolean(experimentId));
+  updateExperimentsListSelection();
+  updateNotesPane();
   await loadEvents();
+  void refreshArtifacts();
 });
 
-document.querySelector("#list-tools")?.addEventListener("click", () => void boot());
+refreshRobotsBtn.addEventListener("click", () => void refreshRobots());
+refreshArtifactsBtn.addEventListener("click", () => void refreshArtifacts());
+
 document.querySelector("#pose-table")?.addEventListener("click", async () => show(await window.chem0.readResource("lerobot://pose-table")));
 document.querySelector("#open-record")?.addEventListener("click", async () => show(await window.chem0.openRecordWindow()));
 document.querySelector("#open-train")?.addEventListener("click", async () => show(await window.chem0.openTrainWindow()));
 document.querySelector("#open-replay")?.addEventListener("click", async () => show(await window.chem0.openReplayWindow()));
 document.querySelector("#open-calibration")?.addEventListener("click", async () => show(await window.chem0.openCalibrationWindow()));
+openSettingsBtn.addEventListener("click", async () => show(await window.chem0.openSettingsWindow()));
 setDefaultRobot.addEventListener("click", async () => {
   const robotId = defaultRobotInput.value.trim();
   if (!robotId) {
     show("Enter a robot_id first.");
     return;
   }
-  const result = await window.chem0.callTool("set_default_robot", { robot_id: robotId });
-  defaultRobotId = String(result.robot_id ?? robotId);
-  defaultRobotInput.value = defaultRobotId;
-  show(result);
+  await applyDefaultRobot(robotId);
 });
 
 sendMessage.addEventListener("click", async () => {

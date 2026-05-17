@@ -8,9 +8,15 @@ const backend = new Chem0Backend(repoRoot);
 const windows = new Set<BrowserWindow>();
 const APP_NAME = "Chem-0 Lab Console";
 
-app.setName(APP_NAME);
+function applyApplicationName(): void {
+  app.name = APP_NAME;
+  app.setName(APP_NAME);
+}
+
+applyApplicationName();
 
 function installApplicationMenu(): void {
+  applyApplicationName();
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: APP_NAME,
@@ -56,6 +62,16 @@ function sendAgentEvent(event: unknown): void {
   }
 }
 
+function platformTitleBarOptions(): Partial<Electron.BrowserWindowConstructorOptions> {
+  if (process.platform === "darwin") {
+    return { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 14 } };
+  }
+  return {
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#07080a", symbolColor: "#b6bcc7", height: 44 }
+  };
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1360,
@@ -63,6 +79,7 @@ function createWindow(): void {
     minWidth: 1040,
     minHeight: 720,
     title: APP_NAME,
+    ...platformTitleBarOptions(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -72,6 +89,25 @@ function createWindow(): void {
   windows.add(win);
   win.on("closed", () => windows.delete(win));
   void win.loadFile(path.join(__dirname, "../renderer/index.html"));
+}
+
+function createSettingsWindow(): void {
+  const win = new BrowserWindow({
+    width: 560,
+    height: 460,
+    minWidth: 420,
+    minHeight: 320,
+    title: `${APP_NAME} Settings`,
+    ...platformTitleBarOptions(),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  windows.add(win);
+  win.on("closed", () => windows.delete(win));
+  void win.loadFile(path.join(__dirname, "../renderer/settings.html"));
 }
 
 function createCalibrationWindow(): void {
@@ -214,5 +250,10 @@ ipcMain.handle("chem0:open-train-window", async () => {
 
 ipcMain.handle("chem0:open-replay-window", async () => {
   createReplayWindow();
+  return { opened: true };
+});
+
+ipcMain.handle("chem0:open-settings-window", async () => {
+  createSettingsWindow();
   return { opened: true };
 });

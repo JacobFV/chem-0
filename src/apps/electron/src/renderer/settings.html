@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chem-0 Settings</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="settings-app">
+      <header class="appbar">
+        <div class="appbar-drag-left"></div>
+        <div class="appbar-title">
+          <span class="brand-mark"></span>
+          <span class="appbar-title-text">Settings</span>
+        </div>
+        <div class="appbar-drag-right"></div>
+      </header>
+      <section class="settings-content">
+        <section class="settings-section">
+          <h2>General</h2>
+          <p>Settings are intentionally minimal for now. More options will land here as the console grows.</p>
+        </section>
+        <section class="settings-section">
+          <h2>Default robot</h2>
+          <div class="field-row">
+            <input id="settings-default-robot" placeholder="mcp_so101" />
+            <button id="settings-save-robot" class="primary">Save</button>
+          </div>
+        </section>
+        <section class="settings-section">
+          <h2>About</h2>
+          <p>chem-0 lab console · local LeRobot experiment platform.</p>
+        </section>
+      </section>
+    </main>
+    <script>
+      document.body.classList.add(`platform-${window.chem0?.platform ?? "darwin"}`);
+      const input = document.getElementById("settings-default-robot");
+      const save = document.getElementById("settings-save-robot");
+      (async () => {
+        try {
+          const current = await window.chem0.callTool("get_default_robot", {});
+          if (typeof current.robot_id === "string") input.value = current.robot_id;
+        } catch {}
+      })();
+      save.addEventListener("click", async () => {
+        const robot_id = input.value.trim();
+        if (!robot_id) return;
+        await window.chem0.callTool("set_default_robot", { robot_id });
+      });
+    </script>
+  </body>
+</html>

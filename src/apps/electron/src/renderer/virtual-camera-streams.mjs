@@ -116,10 +116,15 @@ function cameraFromEntity(entity, canvas) {
 function rendererFor(canvas) {
   let renderer = renderers.get(canvas);
   if (renderer) return renderer;
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-  renderer.setPixelRatio(window.devicePixelRatio || 1);
-  renderers.set(canvas, renderer);
-  return renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderers.set(canvas, renderer);
+    return renderer;
+  } catch (error) {
+    renderers.delete(canvas);
+    throw error;
+  }
 }
 
 async function refreshWorldState() {
@@ -154,7 +159,7 @@ function renderVirtualCameras() {
     renderer.setSize(canvas.width, canvas.height, false);
     renderer.render(buildScene(worldEntities, id), cameraFromEntity(cameraEntity, canvas));
   }
-  window.requestAnimationFrame(() => window.dispatchEvent(new Event("chem0:virtual-camera-frame")));
+  if (cameras.length > 0) window.requestAnimationFrame(() => window.dispatchEvent(new Event("chem0:virtual-camera-frame")));
 }
 
 async function animate() {

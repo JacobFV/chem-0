@@ -1094,43 +1094,6 @@ function updateCameraVisibility(activeIds: Set<number>): void {
   updateWorldPreviewCanvases();
 }
 
-function drawVirtualCameraPreview(canvas: HTMLCanvasElement, camera: JsonObject): void {
-  const width = 320;
-  const height = 180;
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const seed = String(camera.id ?? camera.name ?? "");
-  const hue = Array.from(seed).reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, `hsl(${hue}, 58%, 38%)`);
-  gradient.addColorStop(1, `hsl(${(hue + 96) % 360}, 46%, 14%)`);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
-  ctx.lineWidth = 1;
-  for (let x = 0; x < width; x += 32) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.stroke();
-  }
-  for (let y = 0; y < height; y += 32) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
-  }
-  ctx.fillStyle = "rgba(255,255,255,0.82)";
-  ctx.font = "500 13px Inter, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(String(camera.name ?? "Virtual camera"), width / 2, height / 2);
-}
-
 function renderSelectedWorldCameras(): void {
   const world = selectedWorld();
   const showPhysicalCameras = world?.type === "physical";
@@ -1175,7 +1138,6 @@ function renderSelectedWorldCameras(): void {
     if (label) label.textContent = String(camera.name ?? id);
     if (canvas) {
       canvas.dataset.cameraId = id;
-      drawVirtualCameraPreview(canvas, camera);
     }
   }
   updateWorldPreviewCanvases();

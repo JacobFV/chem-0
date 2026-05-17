@@ -96,27 +96,32 @@ function axisCenter(object) {
   return center;
 }
 
-function hideNegativeTranslateHandles(control) {
+function shouldRemoveTranslateHandle(handle) {
+  if (["XY", "YZ", "XZ", "XYZ"].includes(handle.name)) return true;
+  if (!["X", "Y", "Z"].includes(handle.name)) return false;
+  const center = axisCenter(handle);
+  const axisValue = handle.name === "X" ? center.x : handle.name === "Y" ? center.y : center.z;
+  return axisValue < -0.001;
+}
+
+function pruneTranslateHandles(control) {
+  const gizmo = control._gizmo;
+  const groups = [gizmo?.gizmo?.translate, gizmo?.picker?.translate, gizmo?.helper?.translate];
+  for (const group of groups) {
+    if (!group) continue;
+    for (const handle of [...group.children]) {
+      if (shouldRemoveTranslateHandle(handle)) group.remove(handle);
+    }
+  }
+}
+
+function hideRemovedTranslateHandleTypes(control) {
   const gizmo = control._gizmo;
   const groups = [gizmo?.gizmo?.translate, gizmo?.picker?.translate, gizmo?.helper?.translate];
   for (const group of groups) {
     if (!group) continue;
     for (const handle of group.children) {
-      if (["XY", "YZ", "XZ", "XYZ"].includes(handle.name)) {
-        handle.visible = false;
-        continue;
-      }
-      if (!["X", "Y", "Z"].includes(handle.name)) continue;
-      const center = axisCenter(handle);
-      const axisValue = handle.name === "X" ? center.x : handle.name === "Y" ? center.y : center.z;
-      const spansOrigin =
-        handle.geometry?.boundingBox &&
-        (handle.name === "X"
-          ? handle.geometry.boundingBox.min.x < -0.001 && handle.geometry.boundingBox.max.x > 0.001
-          : handle.name === "Y"
-            ? handle.geometry.boundingBox.min.y < -0.001 && handle.geometry.boundingBox.max.y > 0.001
-            : handle.geometry.boundingBox.min.z < -0.001 && handle.geometry.boundingBox.max.z > 0.001);
-      if (axisValue < -0.001 || spansOrigin) handle.visible = false;
+      if (shouldRemoveTranslateHandle(handle)) handle.visible = false;
     }
   }
 }
@@ -125,7 +130,7 @@ function setTransformMode(mode) {
   transformMode = mode === "rotate" ? "rotate" : "translate";
   translateTransform.enabled = transformMode === "translate";
   rotateTransform.enabled = transformMode === "rotate";
-  hideNegativeTranslateHandles(translateTransform);
+  hideRemovedTranslateHandleTypes(translateTransform);
 }
 
 function installTransformEvents(control) {
@@ -148,6 +153,8 @@ function installTransformEvents(control) {
     persistGroupPose(id, group);
   });
 }
+
+pruneTranslateHandles(translateTransform);
 
 function entityPose(entity) {
   const pose = entity?.pose && typeof entity.pose === "object" && !Array.isArray(entity.pose) ? entity.pose : {};
@@ -676,7 +683,7 @@ function animate() {
   const now = performance.now();
   settleRigidBodies(true);
   persistPhysicsIfNeeded(now);
-  hideNegativeTranslateHandles(translateTransform);
+  hideRemovedTranslateHandleTypes(translateTransform);
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }

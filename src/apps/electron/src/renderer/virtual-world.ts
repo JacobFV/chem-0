@@ -27,6 +27,9 @@ const objectNameInput = document.querySelector<HTMLInputElement>("#vw-object-nam
 const posXInput = document.querySelector<HTMLInputElement>("#vw-pos-x")!;
 const posYInput = document.querySelector<HTMLInputElement>("#vw-pos-y")!;
 const posZInput = document.querySelector<HTMLInputElement>("#vw-pos-z")!;
+const rollInput = document.querySelector<HTMLInputElement>("#vw-roll")!;
+const pitchInput = document.querySelector<HTMLInputElement>("#vw-pitch")!;
+const yawInput = document.querySelector<HTMLInputElement>("#vw-yaw")!;
 const collisionInput = document.querySelector<HTMLInputElement>("#vw-collision")!;
 const saveObjectBtn = document.querySelector<HTMLButtonElement>("#vw-save-object")!;
 const deleteObjectBtn = document.querySelector<HTMLButtonElement>("#vw-delete-object")!;
@@ -43,9 +46,10 @@ let selectedId = "";
 
 type VirtualWorldEditorApi = {
   createEntity: (kind: string, pose?: JsonObject) => Promise<void>;
-  getState: () => { world: JsonObject | null; entities: JsonObject[]; selectedId: string };
+  getState: () => { world: JsonObject | null; entities: JsonObject[]; selectedId: string; transformMode: "translate" | "rotate" };
   refresh: () => Promise<void>;
   selectEntity: (id: string) => void;
+  setTransformMode: (mode: "translate" | "rotate") => void;
   updateEntityPose: (id: string, pose: JsonObject) => Promise<void>;
 };
 
@@ -60,6 +64,7 @@ type ToolboxDrag = {
 let toolboxDrag: ToolboxDrag | null = null;
 let suppressToolClick = false;
 let localDropStatusTimer = 0;
+let transformMode: "translate" | "rotate" = "translate";
 
 function pointInScene(x: number, y: number): boolean {
   const rect = sceneEl.getBoundingClientRect();
@@ -186,6 +191,21 @@ function activatePane(side: "lhs" | "rhs", pane: string): void {
 
 window.Chem0Shell.installToolbarTooltips();
 
+function setTransformMode(mode: "translate" | "rotate"): void {
+  transformMode = mode;
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-vw-transform]")) {
+    button.classList.toggle("active", button.dataset.vwTransform === mode);
+  }
+  window.dispatchEvent(new CustomEvent("vw:transform-mode", { detail: { mode } }));
+}
+
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-vw-transform]")) {
+  button.addEventListener("click", () => {
+    const mode = button.dataset.vwTransform === "rotate" ? "rotate" : "translate";
+    setTransformMode(mode);
+  });
+}
+
 function render(): void {
   if (world) {
     titleEl.textContent = String(world.name ?? "Virtual world");
@@ -229,6 +249,9 @@ function renderSelected(): void {
   posXInput.value = String(numberAt(pose, "x"));
   posYInput.value = String(numberAt(pose, "y"));
   posZInput.value = String(numberAt(pose, "z"));
+  rollInput.value = String(numberAt(pose, "roll"));
+  pitchInput.value = String(numberAt(pose, "pitch"));
+  yawInput.value = String(numberAt(pose, "yaw"));
   collisionInput.checked = entity.collision_enabled === true;
 }
 
@@ -291,7 +314,10 @@ async function saveSelected(): Promise<void> {
     ...poseOf(entity),
     x: Number(posXInput.value) || 0,
     y: Number(posYInput.value) || 0,
-    z: Number(posZInput.value) || 0
+    z: Number(posZInput.value) || 0,
+    roll: Number(rollInput.value) || 0,
+    pitch: Number(pitchInput.value) || 0,
+    yaw: Number(yawInput.value) || 0
   };
   await chem0.callTool("update_virtual_entity", {
     entity_id: String(entity.id),
@@ -314,13 +340,14 @@ deleteObjectBtn.addEventListener("click", async () => {
 
 const editorApi: VirtualWorldEditorApi = {
   createEntity,
-  getState: () => ({ world, entities, selectedId }),
+  getState: () => ({ world, entities, selectedId, transformMode }),
   refresh,
   selectEntity: (id: string) => {
     selectedId = id;
     activatePane("rhs", "selected");
     render();
   },
+  setTransformMode,
   updateEntityPose: async (id: string, pose: JsonObject) => {
     const entity = entities.find((item) => String(item.id) === id);
     if (!entity) return;

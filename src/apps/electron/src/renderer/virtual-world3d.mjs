@@ -51,6 +51,7 @@ let entities = [];
 let selectedId = "";
 let draggingTransform = false;
 let dropStatusTimer = 0;
+let transformMode = "translate";
 
 const materials = {
   arm: new THREE.MeshStandardMaterial({ color: 0xd8bd55, roughness: 0.55 }),
@@ -164,6 +165,10 @@ function buildEntity(entity) {
 function rebuild(state) {
   entities = Array.isArray(state.entities) ? state.entities : [];
   selectedId = String(state.selectedId || "");
+  if (state.transformMode === "rotate" || state.transformMode === "translate") {
+    transformMode = state.transformMode;
+    transform.setMode(transformMode);
+  }
   for (const [, group] of objects) scene.remove(group);
   objects.clear();
   pickables.length = 0;
@@ -188,8 +193,12 @@ function rebuild(state) {
 
 function attachSelected() {
   const group = objects.get(selectedId);
-  if (group) transform.attach(group);
-  else transform.detach();
+  if (group) {
+    transform.setMode(transformMode);
+    transform.attach(group);
+  } else {
+    transform.detach();
+  }
 }
 
 function collidable(entity) {
@@ -346,6 +355,9 @@ transform.addEventListener("mouseUp", () => {
   pose.x = group.position.x;
   pose.y = group.position.y;
   pose.z = group.position.z;
+  pose.roll = THREE.MathUtils.radToDeg(group.rotation.x);
+  pose.pitch = THREE.MathUtils.radToDeg(group.rotation.y);
+  pose.yaw = THREE.MathUtils.radToDeg(group.rotation.z);
   editorApi()?.updateEntityPose?.(id, pose);
 });
 
@@ -366,6 +378,11 @@ function animate() {
 }
 
 window.addEventListener("vw:state", (event) => rebuild(event.detail || {}));
+window.addEventListener("vw:transform-mode", (event) => {
+  const mode = event.detail?.mode === "rotate" ? "rotate" : "translate";
+  transformMode = mode;
+  transform.setMode(mode);
+});
 window.addEventListener("resize", resize);
 rebuild(editorApi()?.getState?.() || {});
 animate();

@@ -31,6 +31,13 @@
           </div>
         </div>
         <div class="appbar-group right">
+          <button class="icon-btn active" data-vw-transform="translate" title="Move selected object" aria-label="Move selected object">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1.8v12.4M1.8 8h12.4M8 1.8L5.8 4M8 1.8L10.2 4M8 14.2L5.8 12M8 14.2l2.2-2.2M1.8 8L4 5.8M1.8 8L4 10.2M14.2 8L12 5.8M14.2 8L12 10.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn" data-vw-transform="rotate" title="Rotate selected object" aria-label="Rotate selected object">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M12.5 5.2A5 5 0 1 0 13 9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M12.5 2.5v2.8H9.7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <span class="appbar-sep"></span>
           <button class="icon-btn tab-btn active" data-vw-rhs="world" title="World properties" aria-label="World properties">
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2.8 8h10.4M8 2.5c1.5 1.5 2.2 3.3 2.2 5.5S9.5 12 8 13.5C6.5 12 5.8 10.2 5.8 8S6.5 4 8 2.5z" fill="none" stroke="currentColor" stroke-width="1.0"/></svg>
           </button>
@@ -121,6 +128,11 @@
                     <input id="vw-pos-x" type="number" step="0.01" aria-label="X position" />
                     <input id="vw-pos-y" type="number" step="0.01" aria-label="Y position" />
                     <input id="vw-pos-z" type="number" step="0.01" aria-label="Z position" />
+                  </div>
+                  <div class="vw-grid3">
+                    <input id="vw-roll" type="number" step="1" aria-label="Roll rotation" />
+                    <input id="vw-pitch" type="number" step="1" aria-label="Pitch rotation" />
+                    <input id="vw-yaw" type="number" step="1" aria-label="Yaw rotation" />
                   </div>
                   <label class="vw-check"><input id="vw-collision" type="checkbox" /> Collision</label>
                   <button id="vw-save-object" class="primary">Save object</button>

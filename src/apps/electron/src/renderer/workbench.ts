@@ -6,28 +6,20 @@ type JsonObject = { [key: string]: JsonValue };
 document.body.classList.add(`platform-${window.chem0?.platform ?? "darwin"}`);
 
 const params = new URLSearchParams(window.location.search);
-const initialTab = (params.get("tab") ?? "record").toLowerCase();
+const initialTabRaw = (params.get("tab") ?? "record").toLowerCase();
 const detached = params.get("detached") === "1";
 
 if (detached) document.body.classList.add("workbench-detached");
 
-const statusTextEl = document.querySelector<HTMLSpanElement>("#wb-status-text");
-const statusPillEl = document.querySelector<HTMLDivElement>("#wb-status-pill");
-
-function setStatus(text: string, active = false): void {
-  if (statusTextEl) statusTextEl.textContent = text;
-  if (statusPillEl) statusPillEl.classList.toggle("active", active);
-}
-
 const VALID_TABS = ["record", "train", "replay"] as const;
 type TabName = (typeof VALID_TABS)[number];
 
-function isTab(tab: string): tab is TabName {
-  return (VALID_TABS as readonly string[]).includes(tab);
+function isTab(value: string): value is TabName {
+  return (VALID_TABS as readonly string[]).includes(value);
 }
 
 const panes = new Map<TabName, HTMLElement>();
-for (const pane of document.querySelectorAll<HTMLElement>(".workbench-pane")) {
+for (const pane of document.querySelectorAll<HTMLElement>(".sidebar-pane")) {
   const t = pane.dataset.tab ?? "";
   if (isTab(t)) panes.set(t, pane);
 }
@@ -38,31 +30,17 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>(".appbar .tab-btn
   if (isTab(t)) tabButtons.set(t, btn);
 }
 
-const loadedModules = new Set<TabName>();
+const statusTextEl = document.querySelector<HTMLSpanElement>("#wb-status-text");
+const statusPillEl = document.querySelector<HTMLDivElement>("#wb-status-pill");
 
-function injectScript(src: string, isModule = false): void {
-  const script = document.createElement("script");
-  if (isModule) script.type = "module";
-  script.src = src;
-  document.body.appendChild(script);
-}
-
-function loadModule(tab: TabName): void {
-  if (loadedModules.has(tab)) return;
-  loadedModules.add(tab);
-  if (tab === "record") injectScript("./record3d.mjs", true);
-  else if (tab === "train") injectScript("./train.js");
-  else if (tab === "replay") injectScript("./replay.js");
-}
-
-let currentTab: TabName = isTab(initialTab) ? initialTab : "record";
+let currentTab: TabName = isTab(initialTabRaw) ? initialTabRaw : "record";
 
 function activateTab(tab: TabName): void {
   currentTab = tab;
-  for (const [name, pane] of panes) pane.hidden = name !== tab;
+  for (const [name, pane] of panes) pane.classList.toggle("active", name === tab);
   for (const [name, btn] of tabButtons) btn.classList.toggle("active", name === tab);
-  loadModule(tab);
-  setStatus(tab, true);
+  if (statusTextEl) statusTextEl.textContent = tab;
+  if (statusPillEl) statusPillEl.classList.toggle("active", true);
 }
 
 for (const [name, btn] of tabButtons) {
@@ -70,7 +48,6 @@ for (const [name, btn] of tabButtons) {
 }
 
 if (detached) {
-  // In detached mode hide all tab buttons except the active one (it stays as a label).
   for (const [name, btn] of tabButtons) {
     if (name !== currentTab) btn.style.display = "none";
   }
@@ -81,16 +58,27 @@ activateTab(currentTab);
 document.querySelector<HTMLButtonElement>("#wb-detach")?.addEventListener("click", async () => {
   await window.chem0.detachWorkbenchTab(currentTab);
 });
-
 document.querySelector<HTMLButtonElement>("#wb-open-settings")?.addEventListener("click", async () => {
   await window.chem0.openSettingsWindow();
 });
 
-if (window.chem0.onWorkbenchSetTab) {
-  window.chem0.onWorkbenchSetTab(({ tab }) => {
-    if (isTab(tab)) activateTab(tab);
-  });
+window.chem0.onWorkbenchSetTab?.(({ tab }) => {
+  if (isTab(tab)) activateTab(tab);
+});
+
+/* Eager-load every module script.  The 3D leader/follower views in the
+   main area are always visible, so record3d.mjs needs to be running
+   continuously to poll robot poses.  train.js / replay.js are cheap to
+   load and only attach listeners + an initial checkpoint fetch. */
+function injectScript(src: string, asModule = false): void {
+  const script = document.createElement("script");
+  if (asModule) script.type = "module";
+  script.src = src;
+  document.body.appendChild(script);
 }
+injectScript("./record3d.mjs", true);
+injectScript("./train.js");
+injectScript("./replay.js");
 
 /* tooltips — mirror the main window behavior */
 
@@ -148,3 +136,6 @@ function applySettings(settings: JsonObject): void {
 
 void window.chem0.getSettings().then(applySettings);
 window.chem0.onSettingsChanged(applySettings);
+
+/* the ?: silences ts unused warnings on JsonValue when no params consumed */
+void (null as JsonValue);

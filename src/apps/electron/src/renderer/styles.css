@@ -1348,79 +1348,28 @@ button.ghost.mini {
 
 .workbench-app { background: var(--bg-0); }
 
-.workbench-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--bg-0);
+/* workspace inside workbench: LHS sidebar + main sim area. */
+.workbench-workspace {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
 }
 
-.workbench-pane {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+.wb-main {
+  padding: 0;
+  background: #000;
   overflow: hidden;
+  position: relative;
 }
 
-.workbench-pane[hidden] { display: none; }
-
-/* Record overrides — the immersive layout was sized to the full viewport in
-   its own window; in the workbench it sits below a 36px toolbar so we
-   confine it to its pane. */
-.workbench-pane > .record-immersive {
+/* The main area is the always-on 3D sim stage.  Reuses the record-immersive
+   class so the existing absolutely-positioned children (3D leader/follower
+   split + camera overlay) keep their layout, but constrained to the main
+   area instead of the whole viewport. */
+.wb-sim-stage.record-immersive {
   position: relative;
   width: 100%;
   height: 100%;
-  flex: 1 1 auto;
-}
-
-/* Train pane */
-.wb-train {
-  display: grid;
-  grid-template-columns: minmax(320px, 420px) 1fr;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-.wb-train-form {
-  border-right: 1px solid var(--border-1);
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-}
-.wb-train-log {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-.wb-train-log .pane-head { flex: 0 0 auto; }
-.wb-train-log-body {
-  flex: 1 1 auto;
-  margin: 0;
-  padding: 10px 12px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-2);
-  background: var(--bg-0);
-  border: none;
-  border-radius: 0;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* Replay pane */
-.wb-replay {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
+  inset: auto;
 }
 
 .wb-row { display: flex; gap: 8px; align-items: stretch; }
@@ -1433,18 +1382,39 @@ button.ghost.mini {
   color: var(--text-3);
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.4;
   border-radius: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 140px;
+  overflow: auto;
 }
 
 .wb-result-pre {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: var(--bg-1);
   border: 1px solid var(--border-1);
   color: var(--text-2);
   font-family: var(--font-mono);
   font-size: 11px;
-  max-height: 320px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wb-train-log-body {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  max-height: 220px;
   overflow: auto;
   border-radius: 0;
   white-space: pre-wrap;
@@ -1460,10 +1430,51 @@ button.ghost.mini {
   gap: 2px;
 }
 
-.wb-inline-head {
-  padding: 0;
-  border: none;
-  background: transparent;
+.wb-record-section { gap: 8px; }
+
+.wb-record-counters { justify-content: space-between; }
+.wb-record-counter {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+
+.wb-task-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+
+.wb-done-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.wb-record-error {
+  padding: 6px 8px;
+  background: rgba(255, 90, 90, 0.08);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* shrink the camera overlay so it sits politely in the corner of the
+   shared main area instead of dominating it. */
+.wb-sim-stage .record-cameras {
+  bottom: 12px;
+  right: 12px;
+  gap: 6px;
+}
+.wb-sim-stage .record-camera-cell {
+  width: 132px;
 }
 
 /* detached mode hides every non-active tab button so the toolbar reads as

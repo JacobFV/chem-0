@@ -44,42 +44,28 @@
         <div class="appbar-drag-right"></div>
       </header>
 
-      <section class="workbench-body">
+      <section class="workspace workbench-workspace">
 
-        <!-- ============================== Record ============================== -->
-        <section class="workbench-pane" data-tab="record" hidden>
-          <div class="record-immersive">
-            <div id="record-3d-leader" class="record-3d-view"></div>
-            <div id="record-3d-follower" class="record-3d-view"></div>
+        <aside class="sidebar lhs" id="wb-sidebar">
 
-            <div class="record-cameras">
-              <div class="record-camera-cell">
-                <video id="rec-cam-0" autoplay muted playsinline></video>
-                <div class="record-camera-label">webcam 0</div>
-              </div>
-              <div class="record-camera-cell">
-                <video id="rec-cam-1" autoplay muted playsinline></video>
-                <div class="record-camera-label">webcam 1</div>
-              </div>
+          <!-- ============================== Record ============================== -->
+          <section class="sidebar-pane" data-tab="record">
+            <div class="pane-head">
+              <h2>Record</h2>
+              <span class="panel-hint" id="wb-record-hint">teleop</span>
             </div>
+            <div class="pane-body">
 
-            <section id="start-overlay" class="overlay-center">
-              <h1 class="overlay-title">Record Demonstrations</h1>
-              <p class="overlay-body">Select leader and follower arms, choose a task, set target episodes, then start teleop.</p>
-
-              <div class="record-picker">
-                <div class="record-picker-field">
+              <section id="start-overlay" class="pane-section wb-record-section">
+                <div class="field">
                   <label for="leader-port">Leader arm</label>
                   <select id="leader-port"></select>
                 </div>
-                <div class="record-picker-field">
+                <div class="field">
                   <label for="follower-port">Follower arm</label>
                   <select id="follower-port"></select>
                 </div>
-              </div>
-
-              <div class="record-picker">
-                <div class="record-picker-field">
+                <div class="field">
                   <label for="task-select">Task</label>
                   <select id="task-select">
                     <option value="pick-and-pour">pick-and-pour</option>
@@ -87,50 +73,57 @@
                     <option value="discard">discard</option>
                   </select>
                 </div>
-                <div class="record-picker-field">
+                <div class="field">
                   <label for="target-episodes">Target episodes</label>
                   <input id="target-episodes" type="number" value="5" min="1" max="50" />
                 </div>
-                <div class="record-picker-field">
+                <div class="field">
                   <label for="repo-id">Dataset repo ID</label>
                   <input id="repo-id" placeholder="myuser/my-dataset" />
                 </div>
-                <div class="record-picker-field">
+                <div class="field">
                   <label for="experiment-id">Experiment</label>
                   <input id="experiment-id" placeholder="exp_xxx" />
                 </div>
-              </div>
+                <div id="start-status" class="wb-status-pre">Scanning for arms…</div>
+                <button id="start-button" class="primary">Start teleop</button>
+              </section>
 
-              <div id="start-status" class="start-status">Scanning for arms…</div>
-              <button id="start-button" class="start-button">START TELEOP</button>
-            </section>
+              <section id="record-overlay" class="pane-section wb-record-section" hidden>
+                <div class="wb-row wb-record-counters">
+                  <span id="episode-counter" class="wb-record-counter">Episode 0 / 0</span>
+                  <span id="frame-counter" class="wb-record-counter">0 frames</span>
+                </div>
+                <div class="field">
+                  <label>Task</label>
+                  <div id="task-label" class="wb-task-label">pick-and-pour</div>
+                </div>
+                <div class="field">
+                  <label>Status</label>
+                  <div id="record-status" class="wb-status-pre">ready</div>
+                </div>
+                <div class="wb-row">
+                  <button id="rec-button" class="primary">Start record</button>
+                  <button id="stop-session-button" class="ghost">Stop teleop</button>
+                </div>
+                <div id="record-error" class="wb-record-error" hidden></div>
+              </section>
 
-            <section id="record-overlay" class="overlay-bottom" hidden>
-              <div class="record-progress">
-                <span id="episode-counter" class="record-episode-label">Episode 0 / 0</span>
-                <span id="frame-counter" class="record-frame-label">0 frames</span>
-              </div>
-              <div class="record-hud">
-                <span id="task-label" class="record-task-label">pick-and-pour</span>
-                <span id="record-status" class="record-status-label">ready</span>
-                <button id="rec-button" class="step-button">START RECORD</button>
-                <button id="stop-session-button" class="ghost-button">Stop Teleop</button>
-              </div>
-              <div id="record-error" class="step-error" hidden></div>
-            </section>
+              <section id="done-overlay" class="pane-section wb-record-section" hidden>
+                <div class="wb-done-title">✓ Recording complete</div>
+                <div id="done-summary" class="wb-status-pre"></div>
+                <button id="close-button" class="ghost">Reset</button>
+              </section>
+            </div>
+          </section>
 
-            <section id="done-overlay" class="overlay-center" hidden>
-              <h1 class="overlay-title">✓ Recording complete</h1>
-              <div id="done-summary" class="overlay-subtitle"></div>
-              <button id="close-button" class="start-button">Close</button>
-            </section>
-          </div>
-        </section>
-
-        <!-- ============================== Train ============================== -->
-        <section class="workbench-pane" data-tab="train" hidden>
-          <div class="wb-train">
-            <section class="wb-train-form">
+          <!-- ============================== Train ============================== -->
+          <section class="sidebar-pane" data-tab="train">
+            <div class="pane-head">
+              <h2>Train</h2>
+              <button id="refresh-checkpoints" class="ghost mini">Refresh</button>
+            </div>
+            <div class="pane-body">
               <div class="pane-section">
                 <div class="field">
                   <label for="train-dataset">Dataset repo ID</label>
@@ -157,52 +150,75 @@
                   <input id="train-output-dir" value="outputs/train" />
                 </div>
                 <div class="wb-row">
-                  <button id="train-start" class="primary">Start training</button>
+                  <button id="train-start" class="primary">Start</button>
                   <button id="train-stop" class="ghost" disabled>Stop</button>
                 </div>
                 <pre id="train-status" class="wb-status-pre">ready</pre>
               </div>
               <div class="pane-section">
-                <div class="pane-head wb-inline-head">
-                  <h2>Checkpoints</h2>
-                  <button id="refresh-checkpoints" class="ghost mini">Refresh</button>
+                <div class="field">
+                  <label>Training log</label>
+                  <pre id="train-log" class="wb-train-log-body"></pre>
                 </div>
-                <div id="checkpoint-list" class="wb-checkpoint-list"></div>
               </div>
-            </section>
-            <section class="wb-train-log">
-              <div class="pane-head"><h2>Training log</h2></div>
-              <pre id="train-log" class="wb-train-log-body"></pre>
-            </section>
-          </div>
-        </section>
+              <div class="pane-section">
+                <div class="field">
+                  <label>Checkpoints</label>
+                  <div id="checkpoint-list" class="wb-checkpoint-list"></div>
+                </div>
+              </div>
+            </div>
+          </section>
 
-        <!-- ============================== Replay ============================== -->
-        <section class="workbench-pane" data-tab="replay" hidden>
-          <div class="wb-replay">
-            <div class="pane-section">
-              <div class="field">
-                <label for="replay-dataset">Dataset repo ID</label>
-                <input id="replay-dataset" placeholder="myuser/my-dataset" />
-              </div>
-              <div class="wb-row">
-                <div class="field" style="flex: 1;">
+          <!-- ============================== Replay ============================== -->
+          <section class="sidebar-pane" data-tab="replay">
+            <div class="pane-head">
+              <h2>Replay</h2>
+            </div>
+            <div class="pane-body">
+              <div class="pane-section">
+                <div class="field">
+                  <label for="replay-dataset">Dataset repo ID</label>
+                  <input id="replay-dataset" placeholder="myuser/my-dataset" />
+                </div>
+                <div class="field">
                   <label for="replay-episode">Episode</label>
                   <input id="replay-episode" type="number" value="0" min="0" max="999" />
                 </div>
-                <div class="field" style="flex: 1;">
+                <div class="field">
                   <label for="replay-port">Robot port</label>
                   <input id="replay-port" placeholder="/dev/cu.usbmodem..." />
                 </div>
+                <div class="wb-row">
+                  <button id="replay-start" class="primary">Replay</button>
+                </div>
+                <pre id="replay-status" class="wb-status-pre">ready</pre>
               </div>
-              <div class="wb-row">
-                <button id="replay-start" class="primary">Replay</button>
+              <div class="pane-section">
+                <div class="field">
+                  <label>Result</label>
+                  <pre id="replay-result" class="wb-result-pre"></pre>
+                </div>
               </div>
-              <pre id="replay-status" class="wb-status-pre">ready</pre>
             </div>
-            <div class="pane-section">
-              <div class="pane-head wb-inline-head"><h2>Result</h2></div>
-              <pre id="replay-result" class="wb-result-pre"></pre>
+          </section>
+
+        </aside>
+
+        <section class="main-area wb-main">
+          <div class="record-immersive wb-sim-stage">
+            <div id="record-3d-leader" class="record-3d-view" data-label="leader"></div>
+            <div id="record-3d-follower" class="record-3d-view" data-label="follower"></div>
+
+            <div class="record-cameras">
+              <div class="record-camera-cell">
+                <video id="rec-cam-0" autoplay muted playsinline></video>
+                <div class="record-camera-label">webcam 0</div>
+              </div>
+              <div class="record-camera-cell">
+                <video id="rec-cam-1" autoplay muted playsinline></video>
+                <div class="record-camera-label">webcam 1</div>
+              </div>
             </div>
           </div>
         </section>

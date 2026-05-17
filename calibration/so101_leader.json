@@ -29,10 +29,10 @@
     },
     "wrist_roll": {
         "id": 5,
-        "drive_mode": 0,
+        "drive_mode": 1,
         "homing_offset": 506,
-        "range_min": 1893,
-        "range_max": 2201
+        "range_min": 1698,
+        "range_max": 2396
     },
     "gripper": {
         "id": 6,

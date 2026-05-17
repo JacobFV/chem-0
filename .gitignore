@@ -3,7 +3,9 @@
 .venv/
 .opencode/
 node_modules/
-data/
+data/blobs
+data/demo_logs
+data/chem0.sqlite
 src/apps/electron/dist/
 src/apps/mcp-node/dist/
 src/lib/backend/dist/

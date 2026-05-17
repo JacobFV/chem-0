@@ -17,7 +17,7 @@ from pathlib import Path
 try:
     from chem0.vision import (
         capture_frame,
-        find_vials,
+        find_vials_with_blue_cap,
         infer_vial_ph,
         infer_vial_identity,
         calibrate_ranges_from_reference,
@@ -28,7 +28,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from chem0.vision import (
         capture_frame,
-        find_vials,
+        find_vials_with_blue_cap,
         infer_vial_ph,
         infer_vial_identity,
         calibrate_ranges_from_reference,
@@ -42,6 +42,7 @@ def analyse(
     output: str | None = None,
     annotate: bool = False,
     max_vials: int = 6,
+    exposure: int | None = None,
 ) -> list[dict]:
     """Capture a frame, detect vials, infer pH and identity.
 
@@ -52,12 +53,12 @@ def analyse(
     sys.stderr.write(json.dumps({"event": "reference_calibration", "patches": ref["num_patches"]}) + "\n")
 
     # Capture
-    frame = capture_frame(camera_id=camera_id)
+    frame = capture_frame(camera_id=camera_id, exposure=exposure)
     path = save_frame(frame)
     sys.stderr.write(json.dumps({"event": "frame_captured", "path": path}) + "\n")
 
-    # Detect vials
-    vials = find_vials(frame, max_vials=max_vials)
+    # Detect vials (blue-capped only)
+    vials = find_vials_with_blue_cap(frame, max_vials=max_vials)
     sys.stderr.write(json.dumps({"event": "vials_detected", "count": len(vials)}) + "\n")
 
     results: list[dict] = []
@@ -105,6 +106,7 @@ def main() -> int:
     parser.add_argument("--output", "-o", help="Path to JSONL output file")
     parser.add_argument("--annotate", action="store_true", help="Save annotated frame with bounding boxes")
     parser.add_argument("--max-vials", type=int, default=6, help="Maximum vials to report")
+    parser.add_argument("--exposure", type=int, default=None, help="Camera exposure (negative=less)")
     args = parser.parse_args()
 
     results = analyse(
@@ -112,6 +114,7 @@ def main() -> int:
         output=args.output,
         annotate=args.annotate,
         max_vials=args.max_vials,
+        exposure=args.exposure,
     )
 
     # Print results as JSONL to stdout

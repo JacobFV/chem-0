@@ -42,6 +42,10 @@ type VirtualWorldEditorApi = {
   updateEntityPose: (id: string, pose: JsonObject) => Promise<void>;
 };
 
+type VirtualWorldGlobals = Window & {
+  virtualWorldDragKind?: string;
+};
+
 function poseOf(entity: JsonObject): JsonObject {
   const pose = entity.pose;
   return pose && typeof pose === "object" && !Array.isArray(pose) ? (pose as JsonObject) : {};
@@ -68,6 +72,9 @@ const paneBindings = {
     buttonAttr: "data-vw-rhs",
     buttonsSelector: "button[data-vw-rhs]",
     initialTab: "world",
+    onActivate: (pane) => {
+      subtitleEl.textContent = pane;
+    },
     paneAttr: "data-vw-pane",
     paneRoot: document.querySelector<HTMLElement>(".vw-sidebar.rhs") ?? document
   })
@@ -162,7 +169,14 @@ async function createEntity(kind: string, poseOverride: JsonObject = {}): Promis
 for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-create]")) {
   btn.addEventListener("click", () => void createEntity(btn.dataset.create ?? "box"));
   btn.addEventListener("dragstart", (event) => {
-    event.dataTransfer?.setData("text/plain", btn.dataset.create ?? "box");
+    const kind = btn.dataset.create ?? "box";
+    (window as VirtualWorldGlobals).virtualWorldDragKind = kind;
+    event.dataTransfer?.setData("text/plain", kind);
+    event.dataTransfer?.setData("application/x-chem0-asset", kind);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+  });
+  btn.addEventListener("dragend", () => {
+    (window as VirtualWorldGlobals).virtualWorldDragKind = "";
   });
 }
 

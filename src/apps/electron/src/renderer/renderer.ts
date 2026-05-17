@@ -55,6 +55,12 @@ const worldModalName = document.querySelector<HTMLInputElement>("#world-modal-na
 const worldModalNotes = document.querySelector<HTMLTextAreaElement>("#world-modal-notes")!;
 const worldModalCancel = document.querySelector<HTMLButtonElement>("#world-modal-cancel")!;
 const worldModalCreate = document.querySelector<HTMLButtonElement>("#world-modal-create")!;
+const confirmModal = document.querySelector<HTMLDivElement>("#confirm-modal")!;
+const confirmModalTitle = document.querySelector<HTMLHeadingElement>("#confirm-modal-title")!;
+const confirmModalKind = document.querySelector<HTMLSpanElement>("#confirm-modal-kind")!;
+const confirmModalMessage = document.querySelector<HTMLParagraphElement>("#confirm-modal-message")!;
+const confirmModalCancel = document.querySelector<HTMLButtonElement>("#confirm-modal-cancel")!;
+const confirmModalConfirm = document.querySelector<HTMLButtonElement>("#confirm-modal-confirm")!;
 const refreshWorldsBtn = document.querySelector<HTMLButtonElement>("#refresh-worlds")!;
 const virtualArmNameInput = document.querySelector<HTMLInputElement>("#virtual-arm-name")!;
 const createVirtualArmBtn = document.querySelector<HTMLButtonElement>("#create-virtual-arm")!;
@@ -95,9 +101,39 @@ let virtualEntitiesCache: JsonObject[] = [];
 let worldModalMode: "create" | "edit" = "create";
 let worldModalType: "physical" | "virtual" = "physical";
 let worldModalWorldId = "";
+let confirmResolver: ((confirmed: boolean) => void) | null = null;
 
 type PhSample = { value: number; timestamp: number };
 const phSamples: PhSample[] = [];
+
+function closeConfirmModal(confirmed: boolean): void {
+  confirmModal.hidden = true;
+  const resolver = confirmResolver;
+  confirmResolver = null;
+  resolver?.(confirmed);
+}
+
+function confirmAction(options: { title: string; kind?: string; message: string; confirmLabel?: string }): Promise<boolean> {
+  if (confirmResolver) closeConfirmModal(false);
+  confirmModalTitle.textContent = options.title;
+  confirmModalKind.textContent = options.kind ?? "";
+  confirmModalMessage.textContent = options.message;
+  confirmModalConfirm.textContent = options.confirmLabel ?? "Confirm";
+  confirmModal.hidden = false;
+  confirmModalConfirm.focus();
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+  });
+}
+
+confirmModalCancel.addEventListener("click", () => closeConfirmModal(false));
+confirmModalConfirm.addEventListener("click", () => closeConfirmModal(true));
+confirmModal.addEventListener("click", (event) => {
+  if (event.target === confirmModal) closeConfirmModal(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !confirmModal.hidden) closeConfirmModal(false);
+});
 
 function setActiveExperimentLabel(text: string, active: boolean): void {
   activeExperimentText.textContent = text;
@@ -325,15 +361,16 @@ function worldEntities(worldId: string): JsonObject[] {
   return virtualEntitiesCache.filter((entity) => String(entity.world_id) === worldId);
 }
 
-function iconSvg(name: "check" | "config" | "edit" | "trash" | "x"): string {
+function iconSvg(name: "check" | "config" | "edit" | "plus" | "trash" | "x"): string {
   if (name === "check") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.2l3 3L13 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   if (name === "config") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2l.6 1.5 1.6-.3.4 1.5 1.5.7-.9 1.3.9 1.3-1.5.7-.4 1.5-1.6-.3L8 14l-.6-1.5-1.6.3-.4-1.5-1.5-.7.9-1.3-.9-1.3 1.5-.7.4-1.5 1.6.3z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>`;
   if (name === "edit") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 11.8V14h2.2L12.5 6.7l-2.2-2.2L3 11.8zM9.7 5.1l2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  if (name === "plus") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
   if (name === "trash") return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 4h10M6 4V2.8h4V4M5 6v7M8 6v7M11 6v7M4.5 4l.5 10h6l.5-10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   return `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 }
 
-function makeGhostIcon(name: "check" | "config" | "edit" | "trash" | "x", label: string): HTMLButtonElement {
+function makeGhostIcon(name: "check" | "config" | "edit" | "plus" | "trash" | "x", label: string): HTMLButtonElement {
   const button = document.createElement("button");
   button.className = "ghost-icon";
   button.innerHTML = iconSvg(name);
@@ -348,24 +385,6 @@ async function createVirtualCameraInWorld(worldId: string): Promise<void> {
     name: `Camera ${worldEntities(worldId).filter((entity) => entity.kind === "camera").length + 1}`,
     pose: { x: 0.35, y: -0.35, z: 0.45, roll: 0, pitch: -35, yaw: 45 },
     spec: { resolution: "1280x720", fov_degrees: 60 }
-  });
-  show(result);
-  await refreshWorlds();
-}
-
-async function createVirtualRigidBodyInWorld(worldId: string): Promise<void> {
-  const result = await window.chem0.callTool("create_virtual_rigid_body", {
-    world_id: worldId,
-    name: `Object ${worldEntities(worldId).filter((entity) => entity.kind === "rigid_body").length + 1}`,
-    pose: { x: 0.18, y: 0, z: 0.03, roll: 0, pitch: 0, yaw: 0 },
-    spec: {
-      mass_kg: 0.1,
-      collision_shape: "box",
-      dimensions_m: [0.05, 0.05, 0.05],
-      collision_mode: "full",
-      collides_with: ["arm", "rigid_body"]
-    },
-    collision_enabled: true
   });
   show(result);
   await refreshWorlds();
@@ -398,19 +417,7 @@ function appendWorldContents(li: HTMLLIElement, world: JsonObject): void {
       rows: entities
         .filter((entity) => entity.kind === "camera")
         .map((entity) => ({ id: String(entity.id), label: String(entity.name ?? entity.id), kind: "camera", source: entity })),
-      action: { label: "+ Cam", run: () => void createVirtualCameraInWorld(worldId) }
-    });
-    sections.push({
-      label: "objects",
-      rows: entities
-        .filter((entity) => entity.kind === "rigid_body")
-        .map((entity) => ({
-          id: String(entity.id),
-          label: `${String(entity.name ?? entity.id)} · ${entity.collision_enabled ? "collision" : "passive"}`,
-          kind: "rigid_body",
-          source: entity
-        })),
-      action: { label: "+ Object", run: () => void createVirtualRigidBodyInWorld(worldId) }
+      action: { label: "Add camera", run: () => void createVirtualCameraInWorld(worldId) }
     });
   }
 
@@ -424,9 +431,7 @@ function appendWorldContents(li: HTMLLIElement, world: JsonObject): void {
     label.textContent = section.label;
     head.append(label);
     if (section.action) {
-      const action = document.createElement("button");
-      action.className = "ghost mini";
-      action.textContent = section.action.label;
+      const action = makeGhostIcon("plus", section.action.label);
       action.addEventListener("click", (event) => {
         event.stopPropagation();
         section.action?.run();
@@ -548,7 +553,15 @@ function renderWorldsList(): void {
     del.disabled = id === "world_physical_default";
     del.addEventListener("click", async (event) => {
       event.stopPropagation();
-      if (del.disabled || !window.confirm(`Delete ${String(world.name ?? id)}?`)) return;
+      const worldName = String(world.name ?? id);
+      if (del.disabled) return;
+      const confirmed = await confirmAction({
+        title: `Delete ${worldName}`,
+        kind: String(world.type ?? "world"),
+        message: `Delete ${worldName}? This removes the world and its local assignments.`,
+        confirmLabel: "Delete"
+      });
+      if (!confirmed) return;
       try {
         show(await window.chem0.callTool("delete_world", { world_id: id }));
         selectedWorldId = "world_physical_default";

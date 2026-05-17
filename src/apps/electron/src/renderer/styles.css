@@ -877,7 +877,7 @@ pre::-webkit-scrollbar-thumb,
   display: flex;
   align-items: stretch;
   height: 36px;
-  padding: 0;
+  padding: 0 0 0 76px;
   gap: 0;
   background: var(--bg-0);
   border-bottom: 1px solid var(--border-2);
@@ -896,7 +896,7 @@ pre::-webkit-scrollbar-thumb,
 
 body.platform-darwin .appbar { padding-left: 76px; }
 body.platform-win32 .appbar,
-body.platform-linux .appbar { padding-right: 140px; }
+body.platform-linux .appbar { padding-left: 0; padding-right: 140px; }
 
 .appbar-drag-left,
 .appbar-drag-right {
@@ -1459,12 +1459,24 @@ button.ghost.mini {
   resize: vertical;
 }
 
+.modal-copy {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 14px;
   border-top: 1px solid var(--border-1);
+}
+
+button.danger-action {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .sidebar .cameras-strip { grid-template-columns: 1fr; gap: 6px; }

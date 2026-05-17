@@ -4,7 +4,10 @@ import { TransformControls } from "./vendor/TransformControls.js";
 
 const root = document.querySelector("#vw-scene");
 const banner = document.querySelector("#vw-collision-banner");
-const editor = window.virtualWorldEditor;
+
+function editorApi() {
+  return window.virtualWorldEditor;
+}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x020202);
@@ -244,16 +247,35 @@ renderer.domElement.addEventListener("pointerdown", (event) => {
   const hit = raycaster.intersectObjects(pickables, false)[0];
   if (!hit) return;
   const id = hit.object.userData.entityId;
-  if (id && editor?.selectEntity) editor.selectEntity(String(id));
+  if (id && editorApi()?.selectEntity) editorApi().selectEntity(String(id));
 });
 
-renderer.domElement.addEventListener("dragover", (event) => event.preventDefault());
-renderer.domElement.addEventListener("drop", (event) => {
+function dragKind(event) {
+  return event.dataTransfer?.getData("application/x-chem0-asset") ||
+    event.dataTransfer?.getData("text/plain") ||
+    window.virtualWorldDragKind ||
+    "box";
+}
+
+function handleDragOver(event) {
   event.preventDefault();
-  const kind = event.dataTransfer?.getData("text/plain") || "box";
+  event.stopPropagation();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+}
+
+function handleDrop(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const kind = dragKind(event);
   const point = pointerToGround(event);
-  editor?.createEntity?.(kind, { x: point.x, y: point.y, z: kind === "camera" ? 0.4 : kind === "light" ? 0.6 : 0 });
-});
+  editorApi()?.createEntity?.(kind, { x: point.x, y: point.y, z: kind === "camera" ? 0.4 : kind === "light" ? 0.6 : 0 });
+  window.virtualWorldDragKind = "";
+}
+
+root.addEventListener("dragover", handleDragOver);
+root.addEventListener("drop", handleDrop);
+renderer.domElement.addEventListener("dragover", handleDragOver);
+renderer.domElement.addEventListener("drop", handleDrop);
 
 transform.addEventListener("dragging-changed", (event) => {
   draggingTransform = Boolean(event.value);
@@ -273,7 +295,7 @@ transform.addEventListener("mouseUp", () => {
   pose.x = group.position.x;
   pose.y = group.position.y;
   pose.z = group.position.z;
-  editor?.updateEntityPose?.(id, pose);
+  editorApi()?.updateEntityPose?.(id, pose);
 });
 
 function resize() {

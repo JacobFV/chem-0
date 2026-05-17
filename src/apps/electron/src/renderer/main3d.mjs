@@ -166,6 +166,7 @@ function createScene(container) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
+  camera.up.set(0, 0, 1);
   const orbit = {
     target: new THREE.Vector3(0, 0, 0.16),
     radius: 2.9,
@@ -214,7 +215,7 @@ function installOrbitControls(element, state, update) {
     state.lastX = event.clientX;
     state.lastY = event.clientY;
     state.theta -= dx * 0.008;
-    state.phi = Math.max(0.18, Math.min(Math.PI - 0.18, state.phi + dy * 0.008));
+    state.phi -= dy * 0.008;
     update();
   });
   element.addEventListener("pointerup", (event) => {

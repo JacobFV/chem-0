@@ -93,6 +93,25 @@ function createCalibrationWindow(): void {
   void win.loadFile(path.join(__dirname, "../renderer/calibration.html"));
 }
 
+function createRecordWindow(): void {
+  const win = new BrowserWindow({
+    width: 1400,
+    height: 860,
+    minWidth: 1100,
+    minHeight: 700,
+    title: `${APP_NAME} Record`,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false
+    }
+  });
+  windows.add(win);
+  win.on("closed", () => windows.delete(win));
+  void win.loadFile(path.join(__dirname, "../renderer/record.html"));
+}
+
 app.whenReady().then(async () => {
   installApplicationMenu();
   app.setAboutPanelOptions({
@@ -142,5 +161,10 @@ ipcMain.handle("chem0:agent-message", async (_event, input: JsonObject) => {
 });
 ipcMain.handle("chem0:open-calibration-window", async () => {
   createCalibrationWindow();
+  return { opened: true };
+});
+
+ipcMain.handle("chem0:open-record-window", async () => {
+  createRecordWindow();
   return { opened: true };
 });

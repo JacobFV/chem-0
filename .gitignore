@@ -4,6 +4,7 @@
 .opencode/
 node_modules/
 data/
+calibration/
 src/apps/electron/dist/
 src/apps/mcp-node/dist/
 src/lib/backend/dist/

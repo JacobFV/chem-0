@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("chem0", {
   listArtifacts: (experimentId: string) => ipcRenderer.invoke("chem0:list-artifacts", experimentId),
   sendAgentMessage: (input: JsonObject) => ipcRenderer.invoke("chem0:agent-message", input),
   openCalibrationWindow: () => ipcRenderer.invoke("chem0:open-calibration-window"),
+  openRecordWindow: () => ipcRenderer.invoke("chem0:open-record-window"),
   onAgentEvent: (callback: (event: JsonObject) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: JsonObject) => callback(payload);
     ipcRenderer.on("chem0:agent-event", listener);

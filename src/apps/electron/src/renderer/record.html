@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Data recording for ACT imitation learning — Chem-0 Lab Console." />
+    <title>Chem-0 Record</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./record-styles.css" />
+  </head>
+  <body>
+    <main class="record-app record-immersive">
+      <div id="record-3d-leader" class="record-3d-view"></div>
+      <div id="record-3d-follower" class="record-3d-view"></div>
+
+      <div class="record-cameras">
+        <div class="record-camera-cell">
+          <video id="rec-cam-0" autoplay muted playsinline></video>
+          <div class="record-camera-label">webcam 0</div>
+        </div>
+        <div class="record-camera-cell">
+          <video id="rec-cam-1" autoplay muted playsinline></video>
+          <div class="record-camera-label">webcam 1</div>
+        </div>
+      </div>
+
+      <!-- start overlay -->
+      <section id="start-overlay" class="overlay-center">
+        <h1 class="overlay-title">Record Demonstrations</h1>
+        <p class="overlay-body">Select leader and follower arms, choose a task, set target episodes, then start teleop.</p>
+
+        <div class="record-picker">
+          <div class="record-picker-field">
+            <label for="leader-port">Leader arm</label>
+            <select id="leader-port"></select>
+          </div>
+          <div class="record-picker-field">
+            <label for="follower-port">Follower arm</label>
+            <select id="follower-port"></select>
+          </div>
+        </div>
+
+        <div class="record-picker">
+          <div class="record-picker-field">
+            <label for="task-select">Task</label>
+            <select id="task-select">
+              <option value="pick-and-pour">pick-and-pour</option>
+              <option value="swirl">swirl</option>
+              <option value="discard">discard</option>
+            </select>
+          </div>
+          <div class="record-picker-field">
+            <label for="target-episodes">Target episodes</label>
+            <input id="target-episodes" type="number" value="5" min="1" max="50" />
+          </div>
+          <div class="record-picker-field">
+            <label for="experiment-id">Experiment</label>
+            <input id="experiment-id" placeholder="exp_xxx" />
+          </div>
+        </div>
+
+        <div id="start-status" class="start-status">Scanning for arms…</div>
+        <button id="start-button" class="start-button">START TELEOP</button>
+      </section>
+
+      <!-- recording overlay -->
+      <section id="record-overlay" class="overlay-bottom" hidden>
+        <div class="record-progress">
+          <span id="episode-counter" class="record-episode-label">Episode 0 / 0</span>
+          <span id="frame-counter" class="record-frame-label">0 frames</span>
+        </div>
+        <div class="record-hud">
+          <span id="task-label" class="record-task-label">pick-and-pour</span>
+          <span id="record-status" class="record-status-label">ready</span>
+          <button id="rec-button" class="step-button">START RECORD</button>
+          <button id="stop-teleop-button" class="ghost-button">Stop Teleop</button>
+        </div>
+        <div id="record-error" class="step-error" hidden></div>
+      </section>
+
+      <!-- done overlay -->
+      <section id="done-overlay" class="overlay-center" hidden>
+        <h1 class="overlay-title">✓ Recording complete</h1>
+        <div id="done-summary" class="overlay-subtitle"></div>
+        <button id="close-button" class="start-button">Close</button>
+      </section>
+    </main>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js"
+        }
+      }
+    </script>
+    <script type="module" src="./record3d.mjs"></script>
+  </body>
+</html>

@@ -7,6 +7,7 @@ import glob
 import json
 import base64
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -940,6 +941,59 @@ TOOLS: list[dict[str, Any]] = [
         "description": "Disconnect from the robot and disable torque using LeRobot defaults.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
+    {
+        "name": "start_teleop",
+        "description": "Connect leader (torque off) and follower SO-101 arms, then start a background mirror loop at ~50 Hz. Returns robot IDs for both arms. Call stop_teleop to end mirroring.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "leader_port": {"type": "string", "description": "Serial port for the leader arm."},
+                "follower_port": {"type": "string", "description": "Serial port for the follower/mirror arm."},
+                "baud": {"type": "integer", "default": 1000000},
+            },
+            "required": ["leader_port", "follower_port"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "stop_teleop",
+        "description": "Stop the teleop mirror loop and disconnect both arms.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "capture_record_frame",
+        "description": "Read both leader and follower arm positions in one call. Returns pose dicts and a frame counter. Call this from the record UI to capture synced states.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "leader_robot_id": {"type": "string"},
+                "follower_robot_id": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "save_episode",
+        "description": "Save a recorded episode to the blob store. Includes arm pose frame data and camera images.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "experiment_id": {"type": "string", "description": "Experiment ID for blob storage path."},
+                "task": {"type": "string", "enum": ["pick-and-pour", "swirl", "discard"]},
+                "episode_index": {"type": "integer"},
+                "frames": {
+                    "type": "array",
+                    "description": "List of frame dicts, each with leader_pose, follower_pose, timestamp.",
+                },
+                "camera_frames": {
+                    "type": "array",
+                    "description": "List of {camera_id, data_base64, mime_type} per captured frame.",
+                },
+            },
+            "required": ["experiment_id", "task", "episode_index", "frames"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -1466,6 +1520,263 @@ def disconnect(args: dict[str, Any]) -> dict[str, Any]:
     return _tool_json({"robot_id": state.robot_id, "disconnected": was_connected})
 
 
+# ---------------------------------------------------------------------------
+# Teleop + recording
+# ---------------------------------------------------------------------------
+
+_teleop_lock = threading.Lock()
+_teleop_running = False
+_teleop_thread: threading.Thread | None = None
+_teleop_leader_rid: str | None = None
+_teleop_follower_rid: str | None = None
+_teleop_frame_count = 0
+
+
+def _teleop_mirror_loop(stop_flag: threading.Event, leader_id: str, follower_id: str) -> None:
+    """Background thread: read leader observation → send as follower action at ~50 Hz."""
+    while not stop_flag.is_set():
+        try:
+            leader = ROBOTS.get(leader_id)
+            follower = ROBOTS.get(follower_id)
+            if leader and leader.connected and follower and follower.connected:
+                obs = observe_retry(leader, tries=2, delay_s=0.01)
+                action = {k: v for k, v in obs.items() if k.endswith(".pos")}
+                follower.robot.send_action(action)
+        except Exception:
+            pass
+        stop_flag.wait(0.02)
+
+
+def start_teleop(args: dict[str, Any]) -> dict[str, Any]:
+    """Connect two SO-101 arms and start leader→follower mirror loop.
+
+    Leader has torque disabled so it can be moved freely.
+    Follower mirrors the leader at ~50 Hz.
+    """
+    leader_port = args.get("leader_port", DEFAULT_PORT)
+    follower_port = args.get("follower_port")
+    if not follower_port:
+        return _tool_error("follower_port is required.")
+
+    leader_id = f"leader_{Path(leader_port).stem}"
+    follower_id = f"follower_{Path(follower_port).stem}"
+
+    with _teleop_lock:
+        if _teleop_running:
+            return _tool_error("Teleop is already running. Call stop_teleop first.")
+
+        # Connect follower using SO101Follower (with torque, as usual)
+        try:
+            connect_so101({"port": follower_port, "robot_id": follower_id})
+        except Exception as exc:
+            return _tool_error(f"Failed to connect follower: {exc}")
+
+        # Connect leader via raw bus with torque disabled
+        try:
+            from lerobot.motors.feetech import FeetechMotorsBus
+
+            bus = FeetechMotorsBus(port=leader_port)
+            bus.connect(handshake=True)
+            bus.set_baudrate(int(args.get("baud", 1000000)))
+            bus.disable_torque(num_retry=3)
+            # Store the leader as a RobotState with a custom robot-like wrapper
+            # so observe can read from it
+            class _LeaderWrapper:
+                def __init__(self, bus_):
+                    self.bus = bus_
+                    self.is_connected = True
+
+                def get_observation(self):
+                    positions = self.bus.sync_read("Present_Position", normalize=False, num_retry=2)
+                    obs = {}
+                    for i, joint in enumerate(JOINTS):
+                        key = f"id{i + 1}"
+                        raw = positions.get(key, 2047) if positions else 2047
+                        obs[f"{joint}.pos"] = float(raw)
+                    return obs
+
+                def disconnect(self):
+                    if self.bus and self.bus.is_connected:
+                        self.bus.disconnect(disable_torque=False)
+
+            leader_robot = _LeaderWrapper(bus)
+            ls = RobotState(robot_id=leader_id, robot=leader_robot, port=leader_port)
+            ROBOTS[leader_id] = ls
+        except Exception as exc:
+            # Clean up follower
+            if follower_id in ROBOTS:
+                ROBOTS[follower_id].robot.disconnect()
+                del ROBOTS[follower_id]
+            return _tool_error(f"Failed to connect leader: {exc}")
+
+        # Start mirror thread
+        stop_flag = threading.Event()
+        _teleop_thread = threading.Thread(
+            target=_teleop_mirror_loop, args=(stop_flag, leader_id, follower_id), daemon=True
+        )
+        _teleop_running = True
+        _teleop_thread.stop_flag = stop_flag
+        _teleop_leader_rid = leader_id
+        _teleop_follower_rid = follower_id
+
+        _teleop_thread.start()
+
+    return _tool_json({
+        "teleop_started": True,
+        "leader_robot_id": leader_id,
+        "leader_port": leader_port,
+        "follower_robot_id": follower_id,
+        "follower_port": follower_port,
+    })
+
+
+def stop_teleop(args: dict[str, Any]) -> dict[str, Any]:
+    """Stop teleop mirroring and disconnect both arms."""
+    with _teleop_lock:
+        if not _teleop_running:
+            return _tool_json({"teleop_stopped": False, "reason": "not running"})
+
+        if _teleop_thread and hasattr(_teleop_thread, "stop_flag"):
+            _teleop_thread.stop_flag.set()
+        _teleop_thread = None
+
+        result = {"teleop_stopped": True, "leader": None, "follower": None}
+
+        for rid in [_teleop_leader_rid, _teleop_follower_rid]:
+            if rid and rid in ROBOTS:
+                try:
+                    ROBOTS[rid].robot.disconnect()
+                except Exception:
+                    pass
+                result["leader" if "leader" in (rid or "") else "follower"] = {
+                    "robot_id": rid,
+                    "disconnected": True,
+                }
+                del ROBOTS[rid]
+
+        _teleop_running = False
+        _teleop_leader_rid = None
+        _teleop_follower_rid = None
+        _teleop_frame_count = 0
+
+    return _tool_json(result)
+
+
+def capture_record_frame(args: dict[str, Any]) -> dict[str, Any]:
+    """Read both leader and follower arm positions in one synchronized call.
+
+    Also increments a frame counter. Returns raw positions for both arms
+    plus the frame index.
+    """
+    global _teleop_frame_count
+
+    leader_id = _teleop_leader_rid or args.get("leader_robot_id")
+    follower_id = _teleop_follower_rid or args.get("follower_robot_id")
+
+    def _read_positions(rid):
+        if rid and rid in ROBOTS and ROBOTS[rid].connected:
+            try:
+                obs = observe_retry(ROBOTS[rid], tries=2, delay_s=0.01)
+                return {joint: float(obs.get(f"{joint}.pos", 0)) for joint in JOINTS}
+            except Exception:
+                pass
+        return {}
+
+    leader_pose = _read_positions(leader_id)
+    follower_pose = _read_positions(follower_id)
+
+    with _teleop_lock:
+        _teleop_frame_count += 1
+        idx = _teleop_frame_count
+
+    return _tool_json({
+        "frame_index": idx,
+        "leader_pose": leader_pose,
+        "follower_pose": follower_pose,
+        "leader_robot_id": leader_id,
+        "follower_robot_id": follower_id,
+    })
+
+
+def save_episode(args: dict[str, Any]) -> dict[str, Any]:
+    """Save a recorded episode to the blob store.
+
+    Expects:
+      - experiment_id (str): for artifact storage
+      - task (str): pick-and-pour | swirl | discard
+      - episode_index (int): episode number
+      - frames (list): list of frame dicts with leader_pose, follower_pose, timestamp
+      - camera_frames (list[dict]): list of {camera_id, data_base64, mime_type} per frame
+    """
+    import base64 as b64_mod
+
+    experiment_id = args.get("experiment_id", "")
+    task = args.get("task", "unknown")
+    episode_index = int(args.get("episode_index", 0))
+    frames = args.get("frames", [])
+    camera_frames = args.get("camera_frames", [])
+
+    if not experiment_id:
+        return _tool_error("experiment_id is required.")
+    if not frames:
+        return _tool_error("frames list is required.")
+
+    blob_dir = Path(REPO_ROOT) / "data" / "blobs" / experiment_id / f"episode_{episode_index:03d}_{task}"
+    blob_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save frame data as JSON lines
+    frames_path = blob_dir / "frames.jsonl"
+    with open(frames_path, "w") as f:
+        for frame in frames:
+            f.write(json.dumps(frame, separators=(",", ":")) + "\n")
+
+    # Save camera frames as individual image files + manifest
+    cam_manifest = []
+    for i, cf in enumerate(camera_frames or []):
+        cam_id = cf.get("camera_id", 0)
+        data_b64 = cf.get("data_base64", "")
+        mime = cf.get("mime_type", "image/jpeg")
+        ext = "jpg"
+        if "png" in mime:
+            ext = "png"
+        elif "webp" in mime:
+            ext = "webp"
+        fname = f"cam{cam_id}_frame{i:06d}.{ext}"
+        fpath = blob_dir / fname
+        try:
+            fpath.write_bytes(b64_mod.b64decode(data_b64))
+        except Exception:
+            pass
+        cam_manifest.append({"camera_id": cam_id, "frame_index": i, "file": fname, "mime_type": mime})
+
+    cam_manifest_path = blob_dir / "camera_manifest.json"
+    with open(cam_manifest_path, "w") as f:
+        json.dump(cam_manifest, f, indent=2)
+
+    # Write episode metadata
+    meta = {
+        "task": task,
+        "episode_index": episode_index,
+        "num_frames": len(frames),
+        "num_camera_frames": len(camera_frames),
+        "experiment_id": experiment_id,
+        "blob_dir": str(blob_dir),
+    }
+    meta_path = blob_dir / "episode.json"
+    with open(meta_path, "w") as f:
+        json.dump(meta, f, indent=2)
+
+    return _tool_json({
+        "saved": True,
+        "task": task,
+        "episode_index": episode_index,
+        "num_frames": len(frames),
+        "num_camera_frames": len(camera_frames),
+        "blob_dir": str(blob_dir),
+        "meta": meta,
+    })
+
+
 HANDLERS = {
     "list_serial_ports": list_serial_ports,
     "list_cameras": list_cameras,
@@ -1488,6 +1799,10 @@ HANDLERS = {
     "ask_export": ask_export,
     "move_relative": move_relative,
     "disconnect": disconnect,
+    "start_teleop": start_teleop,
+    "stop_teleop": stop_teleop,
+    "capture_record_frame": capture_record_frame,
+    "save_episode": save_episode,
 }
 
 

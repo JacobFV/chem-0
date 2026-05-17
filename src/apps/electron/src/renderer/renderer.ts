@@ -16,6 +16,7 @@ declare global {
       listArtifacts: (experimentId: string) => Promise<JsonObject>;
       sendAgentMessage: (input: JsonObject) => Promise<JsonObject>;
       openCalibrationWindow: () => Promise<JsonObject>;
+      openRecordWindow: () => Promise<JsonObject>;
       onAgentEvent: (callback: (event: JsonObject) => void) => () => void;
     };
   }
@@ -344,6 +345,7 @@ experimentSelect.addEventListener("change", async () => {
 
 document.querySelector("#list-tools")?.addEventListener("click", () => void boot());
 document.querySelector("#pose-table")?.addEventListener("click", async () => show(await window.chem0.readResource("lerobot://pose-table")));
+document.querySelector("#open-record")?.addEventListener("click", async () => show(await window.chem0.openRecordWindow()));
 document.querySelector("#open-calibration")?.addEventListener("click", async () => show(await window.chem0.openCalibrationWindow()));
 setDefaultRobot.addEventListener("click", async () => {
   const robotId = defaultRobotInput.value.trim();

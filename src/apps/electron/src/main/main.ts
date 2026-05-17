@@ -68,7 +68,7 @@ function platformTitleBarOptions(): Partial<Electron.BrowserWindowConstructorOpt
   }
   return {
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#07080a", symbolColor: "#b6bcc7", height: 44 }
+    titleBarOverlay: { color: "#000000", symbolColor: "#a8a8a8", height: 36 }
   };
 }
 

@@ -1,0 +1,31 @@
+{
+  "name": "chem0-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remotion video: the shape of an inquiry that didn't quite finish.",
+  "scripts": {
+    "start": "remotion studio",
+    "build": "remotion render Main out/chem0.mp4 --concurrency=1",
+    "build:webm": "remotion render Main out/chem0.webm --codec=vp8",
+    "still": "remotion still Main out/cover.png --frame=180",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.260",
+    "@remotion/three": "4.0.260",
+    "@remotion/bundler": "4.0.260",
+    "@remotion/renderer": "4.0.260",
+    "@remotion/google-fonts": "4.0.260",
+    "@react-three/fiber": "8.17.10",
+    "@react-three/drei": "9.114.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.260",
+    "three": "0.169.0"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/three": "0.169.0",
+    "typescript": "5.6.3"
+  }
+}

@@ -1286,7 +1286,21 @@ button.ghost.mini {
   background: var(--bg-0);
   flex: 0 0 auto;
 }
-.chat-body-pane .composer textarea { border-radius: 0; min-height: 60px; }
+.chat-body-pane .composer textarea {
+  border-radius: 0;
+  min-height: 60px;
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  resize: none;
+  box-shadow: none;
+}
+.chat-body-pane .composer textarea:hover,
+.chat-body-pane .composer textarea:focus {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
 
 /* legacy topbar/experiment-bar live in record/calibration windows; keep them, but flatten */
 .topbar {

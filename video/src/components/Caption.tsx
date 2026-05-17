@@ -2,8 +2,9 @@ import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { palette, type } from "../theme";
 
-// Lower-third caption that mirrors the spoken narration line, plus a tiny
-// scene marker. Used so the user can review timing while reading the script.
+// A monospace marker + a single-line subtitle pinned to the bottom of the
+// frame. Set in the dark palette so it lives on top of the embedded UI
+// without competing for attention.
 export const Caption: React.FC<{
   marker?: string;
   line?: string;
@@ -22,14 +23,13 @@ export const Caption: React.FC<{
     <div
       style={{
         position: "absolute",
-        left: align === "center" ? "50%" : 96,
-        right: align === "center" ? undefined : 96,
-        bottom: 72,
+        left: align === "center" ? "50%" : 80,
+        right: align === "center" ? undefined : 80,
+        bottom: 56,
         transform: align === "center" ? `translate(-50%, ${-y}px)` : `translateY(${-y}px)`,
         opacity: t,
-        color: palette.ink,
         textAlign: align,
-        maxWidth: 1280,
+        maxWidth: 1480,
         pointerEvents: "none",
       }}
     >
@@ -37,11 +37,11 @@ export const Caption: React.FC<{
         <div
           style={{
             fontFamily: type.mono,
-            fontSize: 16,
-            letterSpacing: 2,
-            color: palette.inkMute,
+            fontSize: 13,
+            letterSpacing: 3,
+            color: palette.accent,
             textTransform: "uppercase",
-            marginBottom: 12,
+            marginBottom: 8,
           }}
         >
           {marker}
@@ -50,15 +50,14 @@ export const Caption: React.FC<{
       {line ? (
         <div
           style={{
-            fontFamily: type.serif,
-            fontSize: 36,
-            lineHeight: 1.25,
-            fontWeight: 400,
-            fontStyle: "italic",
-            color: palette.inkSoft,
+            fontFamily: type.sans,
+            fontSize: 26,
+            lineHeight: 1.3,
+            fontWeight: 500,
+            color: palette.text1,
           }}
         >
-          “{line}”
+          {line}
         </div>
       ) : null}
     </div>

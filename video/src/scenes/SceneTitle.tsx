@@ -10,27 +10,22 @@ import {
 import { Paper } from "../components/Paper";
 import { palette, type } from "../theme";
 
+// chem-0 wordmark dropping in over a dimmed cover photo of the rig.
+// All-caps mono brand tag above; sans subtitle below.
 export const SceneTitle: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
-  const inT = spring({ frame, fps, config: { damping: 200 } });
-  const sub = spring({ frame: frame - 24, fps, config: { damping: 200 } });
-  const ruleW = interpolate(inT, [0, 1], [0, 420]);
-  const out = interpolate(
-    frame,
-    [durationInFrames - 24, durationInFrames],
-    [1, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-  // Cover image sits behind the title at low opacity, gently scaled and
-  // desaturated so it reads as a watermark — not a photo backdrop.
-  const coverScale = interpolate(frame, [0, durationInFrames], [1.05, 1.12]);
-  const coverO = interpolate(
+  const t = spring({ frame, fps, config: { damping: 200 } });
+  const sub = spring({ frame: frame - 14, fps, config: { damping: 200 } });
+  const tagline = spring({ frame: frame - 28, fps, config: { damping: 200 } });
+  const ruleW = interpolate(t, [0, 1], [0, 540]);
+  const cover = interpolate(
     frame,
     [0, 30, durationInFrames - 24, durationInFrames],
-    [0, 0.32, 0.32, 0],
+    [0, 0.42, 0.42, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
+  const coverScale = interpolate(frame, [0, durationInFrames], [1.04, 1.12]);
   return (
     <Paper>
       <Img
@@ -41,11 +36,9 @@ export const SceneTitle: React.FC = () => {
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          opacity: coverO,
+          opacity: cover,
           transform: `scale(${coverScale})`,
-          filter: "saturate(0.6) contrast(0.95) brightness(1.05)",
-          mixBlendMode: "multiply",
-          pointerEvents: "none",
+          filter: "saturate(0.85) brightness(0.7) contrast(1.05)",
         }}
       />
       <div
@@ -53,7 +46,7 @@ export const SceneTitle: React.FC = () => {
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(60% 60% at 50% 50%, rgba(244,241,234,0.35) 0%, rgba(244,241,234,0.92) 75%)",
+            "radial-gradient(60% 60% at 50% 50%, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.92) 80%)",
           pointerEvents: "none",
         }}
       />
@@ -65,7 +58,6 @@ export const SceneTitle: React.FC = () => {
           flexDirection: "column",
           justifyContent: "center",
           alignItems: "center",
-          opacity: out,
         }}
       >
         <div
@@ -73,60 +65,62 @@ export const SceneTitle: React.FC = () => {
             fontFamily: type.mono,
             fontSize: 14,
             letterSpacing: 6,
-            color: palette.inkMute,
+            color: palette.accent,
             textTransform: "uppercase",
             marginBottom: 24,
-            opacity: inT,
+            opacity: t,
           }}
         >
-          a chem-0 field report
+          field demo · v0.2
         </div>
         <div
           style={{
-            fontFamily: type.serif,
-            fontSize: 132,
-            color: palette.ink,
-            letterSpacing: -2,
+            fontFamily: type.sans,
+            fontSize: 168,
+            color: palette.text1,
+            letterSpacing: -3,
             lineHeight: 1,
-            transform: `translateY(${interpolate(inT, [0, 1], [16, 0])}px)`,
-            opacity: inT,
+            fontWeight: 600,
+            transform: `translateY(${interpolate(t, [0, 1], [16, 0])}px)`,
+            opacity: t,
           }}
         >
-          The Shape of a Test
+          chem-0
         </div>
         <div
           style={{
             height: 1,
             width: ruleW,
-            background: palette.ink,
-            marginTop: 32,
-            marginBottom: 28,
+            background: palette.accent,
+            marginTop: 28,
+            marginBottom: 24,
+            opacity: 0.6,
           }}
         />
         <div
           style={{
-            fontFamily: type.serif,
-            fontStyle: "italic",
-            fontSize: 30,
-            color: palette.inkSoft,
+            fontFamily: type.sans,
+            fontSize: 32,
+            color: palette.text2,
             opacity: sub,
             transform: `translateY(${interpolate(sub, [0, 1], [8, 0])}px)`,
+            fontWeight: 400,
           }}
         >
-          notes from a small lab, in May
+          local autonomous chemistry agent · for SO-101 arms
         </div>
-        {/* page number */}
         <div
           style={{
             position: "absolute",
-            bottom: 56,
+            bottom: 64,
             fontFamily: type.mono,
             fontSize: 12,
-            color: palette.inkMute,
             letterSpacing: 3,
+            color: palette.text3,
+            opacity: tagline,
           }}
         >
-          I
+          github.com/JacobFV/chem-0   ·   may 2026
         </div>
       </div>
     </Paper>

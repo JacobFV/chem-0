@@ -18,7 +18,7 @@ export const Typewriter: React.FC<{
   const visible = text.slice(0, n);
   const caretOn = Math.floor(frame / 15) % 2 === 0;
   return (
-    <span style={{ fontFamily: type.mono, color: palette.ink, ...style }}>
+    <span style={{ fontFamily: type.mono, color: palette.text1, ...style }}>
       {visible}
       {showCaret ? (
         <span
@@ -26,7 +26,7 @@ export const Typewriter: React.FC<{
             display: "inline-block",
             width: "0.55em",
             marginLeft: 2,
-            background: caretOn ? palette.ink : "transparent",
+            background: caretOn ? palette.text1 : "transparent",
             color: "transparent",
           }}
         >

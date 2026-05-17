@@ -31,7 +31,7 @@ export const MockWindow: React.FC<{
         style={{
           height: 38,
           background: "linear-gradient(180deg, #F1ECDF 0%, #E7E1D1 100%)",
-          borderBottom: `1px solid ${palette.rule}`,
+          borderBottom: `1px solid ${palette.border1}`,
           display: "flex",
           alignItems: "center",
           paddingLeft: 14,
@@ -49,7 +49,7 @@ export const MockWindow: React.FC<{
             textAlign: "center",
             fontFamily: type.sans,
             fontSize: 13,
-            color: palette.inkMute,
+            color: palette.text3,
             letterSpacing: 0.2,
           }}
         >
@@ -62,12 +62,12 @@ export const MockWindow: React.FC<{
           style={{
             height: 44,
             background: "#F4EFE3",
-            borderBottom: `1px solid ${palette.rule}`,
+            borderBottom: `1px solid ${palette.border1}`,
             display: "flex",
             alignItems: "center",
             padding: "0 14px",
             gap: 14,
-            color: palette.inkSoft,
+            color: palette.text2,
             fontFamily: type.sans,
             fontSize: 13,
             flexShrink: 0,

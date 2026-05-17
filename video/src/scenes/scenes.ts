@@ -2,25 +2,23 @@ import { fps } from "../theme";
 
 const s = (sec: number) => Math.round(sec * fps);
 
-// Scene durations are sized to the actual VO mp3s plus a short tail of
-// breathing room. If you regenerate audio with different lengths, run
-// `for f in video/audio/*.mp3; do afinfo "$f" | grep duration; done` and
-// update both `durationFrames` and `audioDuration` here.
-//
-// audioDuration is in seconds and is used only to position the <Audio>
-// component cleanly inside its scene; the actual mp3 length is canonical.
+// Each scene's duration = its actual mp3 length + ~1.5s tail. If you
+// regenerate audio with a different script, run:
+//   for f in video/public/audio/*.mp3; do ffprobe -v error \
+//     -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$f"; done
+// and reconcile this table.
 export const SCENES = [
-  { id: "title", audio: "01_title.mp3", audioDuration: 7.4, durationFrames: s(10) },
-  { id: "question", audio: "02_question.mp3", audioDuration: 23.4, durationFrames: s(26) },
-  { id: "target", audio: "03_target.mp3", audioDuration: 24.6, durationFrames: s(27) },
-  { id: "approach", audio: "04_approach.mp3", audioDuration: 27.1, durationFrames: s(30) },
-  { id: "architecture", audio: "05_architecture.mp3", audioDuration: 32.3, durationFrames: s(36) },
-  { id: "console", audio: "06_console.mp3", audioDuration: 22.2, durationFrames: s(26) },
-  { id: "calibration", audio: "07_calibration.mp3", audioDuration: 52.6, durationFrames: s(56) },
-  { id: "debugging", audio: "08_debugging.mp3", audioDuration: 24.6, durationFrames: s(28) },
-  { id: "whatWeGot", audio: "09_whatwegot.mp3", audioDuration: 30.6, durationFrames: s(34) },
-  { id: "nextTime", audio: "10_nexttime.mp3", audioDuration: 32.4, durationFrames: s(36) },
-  { id: "end", audio: "11_end.mp3", audioDuration: 8.5, durationFrames: s(12) },
+  { id: "title",        audio: "01_title.mp3",         durationFrames: s(9) },
+  { id: "pitch",        audio: "02_pitch.mp3",         durationFrames: s(17) },
+  { id: "console",      audio: "03_console.mp3",       durationFrames: s(19) },
+  { id: "agent",        audio: "04_agent.mp3",         durationFrames: s(28.5) },
+  { id: "calibration",  audio: "05_calibration.mp3",   durationFrames: s(18.5) },
+  { id: "virtual",      audio: "06_virtual.mp3",       durationFrames: s(17.5) },
+  { id: "vision",       audio: "07_vision.mp3",        durationFrames: s(22) },
+  { id: "bo",           audio: "08_bo.mp3",            durationFrames: s(21) },
+  { id: "architecture", audio: "09_architecture.mp3",  durationFrames: s(25) },
+  { id: "status",       audio: "10_status.mp3",        durationFrames: s(20) },
+  { id: "close",        audio: "11_close.mp3",         durationFrames: s(7) },
 ] as const;
 
 export type SceneId = (typeof SCENES)[number]["id"];

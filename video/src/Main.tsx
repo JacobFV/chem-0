@@ -9,40 +9,37 @@ import {
 } from "remotion";
 import { SCENES } from "./scenes/scenes";
 import { SceneTitle } from "./scenes/SceneTitle";
-import { SceneQuestion } from "./scenes/SceneQuestion";
-import { SceneTarget } from "./scenes/SceneTarget";
-import { SceneApproach } from "./scenes/SceneApproach";
-import { SceneArchitecture } from "./scenes/SceneArchitecture";
+import { ScenePitch } from "./scenes/ScenePitch";
 import { SceneConsole } from "./scenes/SceneConsole";
+import { SceneAgent } from "./scenes/SceneAgent";
 import { SceneCalibration } from "./scenes/SceneCalibration";
-import { SceneDebugging } from "./scenes/SceneDebugging";
-import { SceneWhatWeGot } from "./scenes/SceneWhatWeGot";
-import { SceneNextTime } from "./scenes/SceneNextTime";
+import { SceneVirtual } from "./scenes/SceneVirtual";
+import { SceneVision } from "./scenes/SceneVision";
+import { SceneBO } from "./scenes/SceneBO";
+import { SceneStack } from "./scenes/SceneStack";
+import { SceneNext } from "./scenes/SceneNext";
 import { SceneEnd } from "./scenes/SceneEnd";
 import { palette, type } from "./theme";
 
 const SCENE_COMPONENTS: Record<string, React.FC> = {
   title: SceneTitle,
-  question: SceneQuestion,
-  target: SceneTarget,
-  approach: SceneApproach,
-  architecture: SceneArchitecture,
+  pitch: ScenePitch,
   console: SceneConsole,
+  agent: SceneAgent,
   calibration: SceneCalibration,
-  debugging: SceneDebugging,
-  whatWeGot: SceneWhatWeGot,
-  nextTime: SceneNextTime,
-  end: SceneEnd,
+  virtual: SceneVirtual,
+  vision: SceneVision,
+  bo: SceneBO,
+  architecture: SceneStack,
+  status: SceneNext,
+  close: SceneEnd,
 };
 
-// Cross-fade between adjacent scenes by overlaying a paper-colored veil at
-// each scene boundary. Each scene also gets a tiny page-number watermark
-// in the top-right corner, just to keep the "field report" framing
-// consistent.
+// Cross-fade veil between scenes, page chip in the top-right.
 export const Main: React.FC = () => {
   let offset = 0;
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={{ background: palette.bg0 }}>
       {SCENES.map((sc, idx) => {
         const start = offset;
         offset += sc.durationFrames;
@@ -56,11 +53,7 @@ export const Main: React.FC = () => {
           >
             <Comp />
             <Audio src={staticFile(`audio/${sc.audio}`)} />
-            <PageMark
-              page={idx + 1}
-              total={SCENES.length}
-              sceneLength={sc.durationFrames}
-            />
+            <Chip page={idx + 1} total={SCENES.length} sceneLength={sc.durationFrames} />
             <CrossFadeVeil sceneLength={sc.durationFrames} />
           </Sequence>
         );
@@ -71,13 +64,13 @@ export const Main: React.FC = () => {
 
 const CrossFadeVeil: React.FC<{ sceneLength: number }> = ({ sceneLength }) => {
   const frame = useCurrentFrame();
-  const fadeIn = interpolate(frame, [0, 10], [1, 0], {
+  const fadeIn = interpolate(frame, [0, 8], [1, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
   const fadeOut = interpolate(
     frame,
-    [sceneLength - 10, sceneLength],
+    [sceneLength - 8, sceneLength],
     [0, 1],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
@@ -85,22 +78,18 @@ const CrossFadeVeil: React.FC<{ sceneLength: number }> = ({ sceneLength }) => {
   if (o <= 0.001) return null;
   return (
     <AbsoluteFill
-      style={{
-        background: palette.paper,
-        opacity: o,
-        pointerEvents: "none",
-      }}
+      style={{ background: palette.bg0, opacity: o, pointerEvents: "none" }}
     />
   );
 };
 
-const PageMark: React.FC<{ page: number; total: number; sceneLength: number }> = ({
+const Chip: React.FC<{ page: number; total: number; sceneLength: number }> = ({
   page,
   total,
   sceneLength,
 }) => {
   const frame = useCurrentFrame();
-  const o = interpolate(frame, [6, 24, sceneLength - 12, sceneLength], [0, 0.7, 0.7, 0]);
+  const o = interpolate(frame, [6, 24, sceneLength - 12, sceneLength], [0, 0.65, 0.65, 0]);
   return (
     <div
       style={{
@@ -111,12 +100,12 @@ const PageMark: React.FC<{ page: number; total: number; sceneLength: number }> =
         fontSize: 11,
         letterSpacing: 3,
         textTransform: "uppercase",
-        color: palette.inkMute,
+        color: palette.text3,
         opacity: o,
         pointerEvents: "none",
       }}
     >
-      page {String(page).padStart(2, "0")} / {String(total).padStart(2, "0")}
+      {String(page).padStart(2, "0")} / {String(total).padStart(2, "0")}
     </div>
   );
 };

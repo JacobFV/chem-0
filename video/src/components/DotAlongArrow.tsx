@@ -23,7 +23,7 @@ export const DotAlongArrow: React.FC<{
   dotDuration = 36,
   dotColor = palette.accent,
   curvature = 0,
-  stroke = palette.inkSoft,
+  stroke = palette.text2,
   thickness = 1.6,
 }) => {
   const frame = useCurrentFrame();

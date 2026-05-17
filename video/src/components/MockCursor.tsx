@@ -81,7 +81,7 @@ export const MockCursor: React.FC<{ path: CursorWaypoint[] }> = ({ path }) => {
       >
         <path
           d="M3 2 L3 22 L9 17 L12 24 L15 23 L12 16 L21 16 Z"
-          fill={palette.ink}
+          fill={palette.text1}
           stroke="#FBFAF6"
           strokeWidth={1.2}
           strokeLinejoin="round"

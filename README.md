@@ -1,5 +1,10 @@
 # chem-0
 
+<p align="center">
+  <strong>Attention:</strong> active follow-on work has moved to
+  <a href="https://github.com/JacobFV/phys-0">JacobFV/phys-0</a>.
+</p>
+
 ![chem-0 robot arm welcome image](assets/robot_lab_scene.png)
 
 ## A small research project in embodied laboratory automation
